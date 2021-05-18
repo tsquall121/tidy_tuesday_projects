@@ -20,6 +20,7 @@ library(tidyverse)
 library(tidytuesdayR)
 library(scales)
 library(ggthemes)
+library(tidymodels)
 theme_set(theme_light())
 
 ```
