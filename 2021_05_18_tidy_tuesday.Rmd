@@ -30,9 +30,392 @@ theme_set(theme_light())
 Dowload the weekly data and make available in the `tt` object.
 
 ```{r Load}
-
+library(lubridate)
 tt <- tt_load("2021-05-18")
-
+survey <- tt$survey
+tidy_survey <- survey %>% 
+    mutate(timestamp = as_datetime(timestamp, format = "%m/%d/%Y %H:%M:%S")) %>% 
+    mutate(across(.cols = annual_salary:other_monetary_comp, as.numeric),
+           across(.cols = c(how_old_are_you:industry, currency,
+                            state, overall_years_of_professional_experience:
+                                race), as.factor),
+           country = str_replace(country, "^[Uu]\\.*[Ss]\\.*([Aa])*\\.*",
+                                 "United States"),
+           country = str_replace(country, "(The )*([Uu].+) [Ss].+",
+                                 "United States"),
+           country = str_replace(country, "America", "United States"),
+           country = str_replace(country, "america", "United States"),
+           country = str_replace(country, "The US", "United States"),
+           country = str_replace(country, "California", "United States"),
+           country = str_replace(country, "San Francisco", "United States"),
+           country = str_replace(country, "U. S", "United States"),
+           country = str_replace(country, "^[Uu][Kk]",
+                                 "United Kingdom"),
+           country = str_replace(country, "^Can.+", "Canada"),
+           country = str_replace(country, "^can.+", "Canada"),
+           country = str_replace(country, "CANADA", "Canada"),)
 ```
 
-# Data not available now
+# How long the survey last?
+
+```{r}
+last(tidy_survey$timestamp) - first(tidy_survey$timestamp)
+```
+
+# US respondents' industry
+
+```{r}
+us_only <- tidy_survey %>% 
+    filter(country == "United States",
+           currency != "Other") %>%
+        mutate(how_old_are_you = factor(how_old_are_you,
+                                    levels = c("under 18",
+                                               "18-24", "25-34",
+                                               "35-44", "45-54",
+                                               "55-64", "65 or over"))) %>% 
+    mutate(annual_salary = case_when(
+                                     currency == "EUR" ~ annual_salary * 1.22,
+                                     currency == "JPY" ~ annual_salary * 0.009,
+                                     currency == "GBP" ~ annual_salary * 1.42,
+                                     currency == "CHF" ~ annual_salary * 1.11,
+                                     currency == "CAD" ~ annual_salary * 0.83,
+                                     currency == "AUD/NZD" ~ annual_salary * 0.93,
+                                     currency == "ZAR" ~ annual_salary * 0.07,
+                                     currency == "HKD" ~ annual_salary * 0.13,
+                                     currency == "SEK" ~ annual_salary * 0.12,
+                                     TRUE ~ annual_salary)) %>% 
+    mutate(other_monetary_comp = ifelse(is.na(other_monetary_comp),
+                                        0, other_monetary_comp)) %>% 
+    mutate(total_income = annual_salary + other_monetary_comp)
+
+us_only %>% 
+    count(industry, sort = TRUE) %>% 
+    mutate(industry = fct_reorder(industry, n)) %>% 
+    slice(1:10) %>% 
+    ggplot(aes(n, industry)) +
+    geom_col(aes(fill = industry, color = industry),
+             show.legend = FALSE) + 
+    geom_text(aes(label = n), hjust = -0.2) +
+    labs(x = "# of respondents",
+         y = "",
+         title = "Top 10 industry U.S. respondents working in")
+```
+
+# US individuals with highest total income
+
+```{r}
+us_only %>% 
+    filter(currency != "Other") %>% 
+    slice_max(total_income, n = 20, with_ties = FALSE)
+```
+
+
+# Individuals with the top 3 highest total income in different industries
+
+```{r}
+library(tidytext)
+library(ggrepel)
+us_only %>% 
+    filter(industry %in% c("Accounting, Banking & Finance",
+                           "Agriculture or Forestry",
+                           "Art & Design",
+                           "Business or Consulting",
+                           "Computing or Tech",
+                           "Education (Primary/Secondary)",
+                           "Education (Higher Education)",
+                           "Engineering or Manufacturing",
+                           "Entertainment",
+                           "Government and Public Administration",
+                           "Health care",
+                           "Hospitality & Events",
+                           "Insurance",
+                           "Law",
+                           "Law Enforcement & Security",
+                           "Leisure, Sport & Tourism",
+                           "Marketing, Advertising & PR",
+                           "Media & Digital",
+                           "Nonprofits",
+                           "Property or Construction",
+                           "Recruitment or HR",
+                           "Retail",
+                           "Sales",
+                           "Social Work",
+                           "Transport or Logistics",
+                           "Utilities & Telecommunications")) %>% 
+    group_by(industry) %>% 
+    slice_max(total_income, n = 3, with_ties = FALSE) %>%
+    mutate(job_title = reorder_within(job_title, total_income, industry)) %>% 
+    ggplot(aes(total_income, job_title)) +
+    scale_y_reordered() +
+    scale_x_continuous(labels = dollar) +
+    geom_col(aes(fill = gender), position = "dodge") +
+    geom_text(aes(label = highest_level_of_education_completed), hjust = 1,
+              size = 2.5) +
+    facet_wrap(~industry, scales = "free", ncol = 3) +
+    labs(x = "Total income",
+         y = "",
+         title = "Individuals with the top 3 highest total income in different industries in the U.S.",
+         subtitle = "Breakdown by job title and gender",
+         fill = "Gender") +
+     ggthemes::theme_clean()
+```
+
+
+# Total income by age group in different industries
+
+```{r}
+us_only %>% 
+    filter(industry %in% c("Accounting, Banking & Finance",
+                           "Agriculture or Forestry",
+                           "Art & Design",
+                           "Business or Consulting",
+                           "Computing or Tech",
+                           "Education (Primary/Secondary)",
+                           "Education (Higher Education)",
+                           "Engineering or Manufacturing",
+                           "Entertainment",
+                           "Government and Public Administration",
+                           "Health care",
+                           "Hospitality & Events",
+                           "Insurance",
+                           "Law",
+                           "Law Enforcement & Security",
+                           "Leisure, Sport & Tourism",
+                           "Marketing, Advertising & PR",
+                           "Media & Digital",
+                           "Nonprofits",
+                           "Property or Construction",
+                           "Recruitment or HR",
+                           "Retail",
+                           "Sales",
+                           "Social Work",
+                           "Transport or Logistics",
+                           "Utilities & Telecommunications")) %>% 
+    filter(!is.na(highest_level_of_education_completed)) %>% 
+    ggplot(aes(total_income, how_old_are_you)) +
+    ggridges::geom_density_ridges(aes(fill = how_old_are_you),
+                                  show.legend = FALSE) +
+    # geom_boxplot(aes(fill = how_old_are_you, color = how_old_are_you),
+    #              alpha = 0.7, show.legend = FALSE) +
+    scale_x_continuous(labels = dollar) +
+    facet_wrap(~industry, scales = "free_x", ncol = 4) +
+    labs(x = "Total income",
+         y = "",
+         color = "Education",
+         title = "Total income varied by age group in different industries") +
+    ggthemes::theme_clean()
+```
+
+
+# PhD total income by age group in different industries 
+
+```{r}
+us_only %>% 
+    filter(industry %in% c("Accounting, Banking & Finance",
+                           "Agriculture or Forestry",
+                           "Art & Design",
+                           "Business or Consulting",
+                           "Computing or Tech",
+                           "Education (Primary/Secondary)",
+                           "Education (Higher Education)",
+                           "Engineering or Manufacturing",
+                           "Entertainment",
+                           "Government and Public Administration",
+                           "Health care",
+                           "Hospitality & Events",
+                           "Insurance",
+                           "Law",
+                           "Law Enforcement & Security",
+                           "Leisure, Sport & Tourism",
+                           "Marketing, Advertising & PR",
+                           "Media & Digital",
+                           "Nonprofits",
+                           "Property or Construction",
+                           "Recruitment or HR",
+                           "Retail",
+                           "Sales",
+                           "Social Work",
+                           "Transport or Logistics",
+                           "Utilities & Telecommunications")) %>% 
+    filter(highest_level_of_education_completed == "PhD") %>% 
+    ggplot(aes(total_income, how_old_are_you)) +
+    geom_point(alpha = 0.4) +
+    geom_boxplot(aes(fill = how_old_are_you,
+                     color = how_old_are_you),
+                 alpha = 0.8,
+                 show.legend = FALSE) +
+    scale_x_continuous(labels = dollar) +
+    facet_wrap(~industry, scales = "free_x", ncol = 4) +
+    labs(x = "Total income",
+         y = "",
+         title = "PhDs' total income varied by age group in different industries") +
+    ggthemes::theme_clean()
+```
+
+# Highest paid individual PhD by positions in government
+
+```{r}
+us_only %>% 
+    filter(highest_level_of_education_completed == "PhD",
+           industry == "Government and Public Administration") %>% 
+    group_by(job_title) %>% 
+    slice_max(annual_salary, n = 1, with_ties = FALSE) %>% 
+    ungroup() %>% 
+    mutate(job_title = fct_reorder(job_title, annual_salary)) %>% 
+    ggplot(aes(annual_salary, job_title)) +
+    geom_col(aes(fill = gender), position = "dodge") +
+    scale_x_continuous(labels = dollar) +
+    labs(x = "Annual Salary",
+         y = "",
+         title = "Highest paid individual PhD by positions in government",
+         fill = "Gender") +
+    ggthemes::theme_clean(base_family = "serif")
+
+# Remove that one senior policy adviser
+us_only %>% 
+    filter(highest_level_of_education_completed == "PhD",
+           industry == "Government and Public Administration",
+           job_title != "Senior Policy Advisor") %>% 
+    group_by(job_title) %>% 
+    slice_max(annual_salary, n = 1, with_ties = FALSE) %>% 
+    ungroup() %>% 
+    mutate(job_title = fct_reorder(job_title, annual_salary)) %>% 
+    ggplot(aes(annual_salary, job_title)) +
+    geom_col(aes(fill = gender), position = "dodge") +
+    scale_x_continuous(labels = dollar) +
+    labs(x = "Annual Salary",
+         y = "",
+         title = "Highest paid individual PhD by positions in government",
+         fill = "Gender") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+# Median PhD annual salary by positions in governemnt
+
+```{r}
+us_only %>% 
+    filter(highest_level_of_education_completed == "PhD",
+           industry == "Government and Public Administration") %>% 
+    group_by(job_title) %>% 
+    summarize(median_salary = median(annual_salary)) %>% 
+    ungroup() %>% 
+    mutate(job_title = fct_reorder(job_title, median_salary)) %>% 
+    ggplot(aes(median_salary, job_title)) +
+    geom_col() +
+    scale_x_continuous(labels = dollar) +
+    labs(x = "Median Salary",
+         y = "",
+         title = "Median PhD annual salary by positions in governemnt") +
+    ggthemes::theme_clean(base_family = "serif")
+
+# Remove that one senior policy adviser
+us_only %>% 
+    filter(highest_level_of_education_completed == "PhD",
+           industry == "Government and Public Administration",
+           job_title != "Senior Policy Advisor") %>% 
+    group_by(job_title) %>% 
+    summarize(median_salary = median(annual_salary)) %>% 
+    ungroup() %>% 
+    mutate(job_title = fct_reorder(job_title, median_salary)) %>% 
+    ggplot(aes(median_salary, job_title)) +
+    geom_col() +
+    scale_x_continuous(labels = dollar) +
+    labs(x = "Median Salary",
+         y = "",
+         title = "Median PhD annual salary by positions in governemnt") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+# Median salary for data scientist or data analyst in diffrent industries
+
+```{r}
+us_only %>% 
+    filter(job_title %in% c("Data Scientist", "Data Analyst")) %>% 
+    group_by(industry, job_title) %>% 
+    summarize(median_salary = median(annual_salary)) %>% 
+    ungroup() %>% 
+    mutate(industry = reorder_within(industry, median_salary, job_title)) %>% 
+    ggplot(aes(median_salary, industry, fill = job_title,
+               color = job_title, alpha = 0.7)) +
+    geom_col(show.legend = FALSE) +
+    scale_x_continuous(labels = dollar) +
+    scale_y_reordered() +
+    facet_wrap(~job_title, scales = "free_y") +
+    labs(x = "Median Salary",
+         y = "",
+         title = "Median salary for data scientist or data analyst in diffrent industries") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+# Highest paid individual data scientist or data analyst in diffrent industries
+
+```{r}
+us_only %>% 
+    filter(job_title %in% c("Data Scientist", "Data Analyst")) %>% 
+    group_by(industry) %>% 
+    slice_max(annual_salary, n = 1, with_ties = FALSE) %>% 
+    ungroup() %>% 
+    mutate(industry = reorder_within(industry, annual_salary, job_title)) %>% 
+    ggplot(aes(annual_salary, industry)) +
+    geom_col(aes(fill = job_title,
+                 color = job_title, alpha = 0.7),
+             show.legend = FALSE) +
+    geom_text(aes(label = paste0(gender, " (",
+                                 highest_level_of_education_completed,
+                                 ")")), hjust = 1,
+              size = 3.5, family = "serif") +
+    scale_x_continuous(labels = dollar) +
+    scale_y_reordered() +
+    facet_wrap(~job_title, scales = "free_y") +
+    labs(x = "Annual Salary",
+         y = "",
+         title = "Highest paid individual data scientist or data analyst in diffrent industries") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+
+# Does the type of professional experience matter?
+
+```{r}
+us_only %>% 
+    pivot_longer(cols = overall_years_of_professional_experience:years_of_experience_in_field,
+                 names_to = "experience_type",
+                 values_to = "year_of_experience") %>% 
+    mutate(year_of_experience = fct_reorder(year_of_experience,
+                                            annual_salary)) %>% 
+    ggplot(aes(annual_salary, year_of_experience)) +
+    geom_boxplot(aes(
+                     color = year_of_experience),
+                     show.legend = FALSE) +
+    facet_wrap(~experience_type) +
+    scale_x_log10(label = dollar) +
+    labs(x = "Annual salary (log transformed)",
+         y = "",
+         title = "Annual salary by year of experience",
+         subtitle = "Overall experience vs. experience in field") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+As the year of experience increases, the median annual salary increases. However, this trend disappears when the year of experience reaches 41 years or more.
+
+# Does the gender matter?
+
+```{r}
+us_only %>% 
+    filter(!is.na(gender),
+           !gender %in% c("Prefer not to answer",
+                         "Other or prefer not to answer")) %>% 
+    mutate(gender = fct_reorder(gender, annual_salary)) %>% 
+    ggplot(aes(annual_salary, gender)) +
+    geom_boxplot(aes(color = gender),
+                     show.legend = FALSE) +
+    facet_wrap(~how_old_are_you, scales = "free",
+               ncol = 2) +
+    scale_x_log10(label = dollar) +
+    labs(x = "Annual salary (log transformed)",
+         y = "",
+         title = "Annual salary discrepencies by gender and age") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+Gender definitely matters and man tends to make more across all age groups except for people under 18.
