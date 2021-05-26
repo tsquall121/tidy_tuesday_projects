@@ -1,0 +1,399 @@
+---
+title: "TidyTemplate"
+date: 2021-05-25
+output:
+    html_document:
+        toc: true
+        toc_float: true
+        theme: flatly
+        highlight: pygments
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly \#TidyTuesday event! Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data. While the dataset will be "tamed", it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format. The goal of TidyTuesday is to apply your R skills, get feedback, explore other's work, and connect with the greater \#RStats community! As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE, fig.height = 6, fig.width = 7,
+                      fig.align = "center")
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+library(lubridate)
+theme_set(theme_light())
+
+```
+
+# Load the weekly Data
+
+Download the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2021-05-25")
+records <- tt$records %>% 
+    mutate(year = year(date))
+drivers <- tt$drivers 
+    
+```
+
+# How did the world records develop over time
+
+```{r}
+records %>%
+    mutate(shortcut = fct_relevel(shortcut, "Yes", "No")) %>% 
+    group_by(year, shortcut, type) %>% 
+    summarize(avg_time = mean(time)) %>% 
+    ungroup() %>% 
+    ggplot(aes(year, avg_time, color = shortcut)) +
+    geom_line() +
+    geom_point() +
+    facet_wrap(~type) +
+    labs(x = "Year",
+         y = "Average time in seconds",
+         title = "Average times (in seconds) for world records by year",
+         subtitle = "Breakdown by the shortcut usage and track type",
+         color = "Shortcut usage") +
+    ggthemes::theme_fivethirtyeight(base_family = "serif")
+```
+
+
+```{r}
+records %>% 
+    ggplot(aes(date, time, color = type)) +
+    geom_line() +
+    facet_wrap(~track, scales = "free_y") +
+    labs(x = "Date",
+         y = "World record time in seconds",
+         title = "Development of world records over time",
+         subtitle = "Break down by track name and type",
+         color = "Track type") +
+    ggthemes::theme_clean(base_family = "serif")
+```
+
+# Which track is the fastest?
+
+## Overall
+
+```{r}
+records %>% 
+    group_by(track) %>% 
+    slice_min(time, n = 1) %>% 
+    ungroup() %>% 
+    mutate(track = fct_reorder(track, -time)) %>% 
+    ggplot(aes(time, track, fill = player)) +
+    geom_col(position = "dodge") +
+    geom_text(aes(label = paste0("Time: ", time_period)),
+              size = 3, hjust = 1.1, family = "serif") +
+    labs(x = "Record time (in seconds)",
+         y = "",
+         title = "Which track is the fastest?",
+         fill = "Player") +
+    ggthemes::theme_fivethirtyeight(base_family = "serif")
+```
+
+## Break down by track type and shortcut
+
+```{r}
+records %>% 
+    group_by(track) %>% 
+    slice_min(time, n = 1) %>% 
+    ungroup() %>% 
+    mutate(track = fct_reorder(track, -time),
+           shortcut = fct_relevel(shortcut, "Yes", "No")) %>% 
+    ggplot(aes(time, track, fill = player)) +
+    geom_col(position = "dodge") +
+    geom_text(aes(label = paste0("Time: ", time_period)),
+              size = 3, hjust = 1.1) +
+    facet_grid(rows = vars(shortcut),
+               cols = vars(type),
+               labeller = labeller(shortcut = label_both)) +
+    labs(x = "Record time (in seconds)",
+         y = "",
+         title = "Which track is the fastest?",
+         fill = "Player") +
+    ggthemes::theme_economist(base_family = "serif")
+```
+
+# For which track did the world record improve the most?
+
+## For three-lap tracks
+
+```{r}
+track_longest_3lap <- records %>%
+    filter(type == "Three Lap") %>% 
+    group_by(track) %>% 
+    slice_max(time, n = 1, with_ties = FALSE) %>% 
+    ungroup()
+
+track_shortest_3lap <- records %>% 
+    filter(type == "Three Lap") %>% 
+    group_by(track, type) %>% 
+    slice_min(time, n = 1, with_ties = FALSE) %>% 
+    ungroup()
+
+p1 <- track_longest_3lap %>% 
+    inner_join(track_shortest_3lap, by = "track") %>% 
+    mutate(time_improved = time.x - time.y) %>% 
+    select(track, time_improved, time.x, time.y, everything()) %>% 
+    arrange(desc(time_improved)) %>% 
+    mutate(track = fct_reorder(track, time_improved)) %>% 
+    ggplot(aes(time_improved, track)) +
+    geom_col() +
+    labs(x = "Record time improved (in seconds)",
+         y = "",
+         title = "For which track did the world record improve the most? (Three laps)") +
+    ggthemes::theme_fivethirtyeight(base_family = "serif")
+
+plotly::ggplotly(p1, tooltip = "time_improved")
+```
+
+For three-lap tracks, the world record for **Rainbow Road** has been improved the most at **325.45 seconds or about 5 minutes.**
+
+## For single-lap tracks
+
+```{r}
+track_longest_sl <- records %>%
+    filter(type == "Single Lap") %>% 
+    group_by(track) %>% 
+    slice_max(time, n = 1, with_ties = FALSE) %>% 
+    ungroup()
+
+track_shortest_sl <- records %>% 
+    filter(type == "Single Lap") %>% 
+    group_by(track, type) %>% 
+    slice_min(time, n = 1, with_ties = FALSE) %>% 
+    ungroup()
+
+p2 <- track_longest_sl %>% 
+    inner_join(track_shortest_sl, by = "track") %>% 
+    mutate(time_improved = time.x - time.y) %>% 
+    select(track, time_improved, time.x, time.y, everything()) %>% 
+    arrange(desc(time_improved)) %>% 
+    mutate(track = fct_reorder(track, time_improved)) %>% 
+    ggplot(aes(time_improved, track)) +
+    geom_col() +
+    labs(x = "Record time improved (in seconds)",
+         y = "",
+         title = "For which track did the world record improve the most? (Single lap)") +
+    ggthemes::theme_fivethirtyeight(base_family = "serif") 
+
+plotly::ggplotly(p2, tooltip = "time_improved")
+```
+
+For single-lap tracks, the world record for **Yoshi Valley** has been improved the most at **8.24 seconds**.
+
+# For how many tracks have shortcuts been discovered?
+
+```{r}
+records %>% 
+    count(shortcut, track, sort = TRUE) %>% 
+    filter(shortcut == "Yes")
+```
+
+```{r}
+records %>% 
+    filter(shortcut == "Yes") %>% 
+    distinct(track)
+```
+
+**Answer: 12**
+
+# When were shortcuts discovered?
+
+```{r}
+records %>% 
+    filter(shortcut == "Yes") %>% 
+    group_by(track) %>% 
+    slice_min(date, n = 1)
+```
+
+# On which track does the shortcut save the most time?
+
+## For single-lap tracks
+
+```{r}
+min_time_shortcut_sl <- records %>% 
+    filter(shortcut == "Yes",
+           type == "Single Lap") %>% 
+    group_by(track) %>% 
+    slice_min(time, n = 1, with_ties = FALSE)
+
+min_time_noshortcut_sl <- records %>% 
+    filter(shortcut == "No",
+           type == "Single Lap") %>% 
+    group_by(track) %>% 
+    slice_min(time, n = 1, with_ties = FALSE)
+min_time_shortcut_sl %>% 
+    left_join(min_time_noshortcut_sl, by = "track") %>% 
+    mutate(time_saved = time.y - time.x) %>% 
+    select(track, time_saved, time.y, time.x, shortcut.y, shortcut.x, everything())
+```
+
+Using shortcuts **does not really save time** for **single-lap tracks**.
+## For three-lap tracks
+
+```{r}
+min_time_shortcut_tl <- records %>% 
+    filter(shortcut == "Yes",
+           type == "Three Lap") %>% 
+    group_by(track) %>% 
+    slice_min(time, n = 1, with_ties = FALSE) %>% 
+    ungroup()
+
+min_time_noshortcut_tl <- records %>% 
+    filter(shortcut == "No",
+           type == "Three Lap") %>% 
+    group_by(track) %>% 
+    slice_min(time, n = 1, with_ties = FALSE) %>% 
+    ungroup()
+
+p3 <- min_time_shortcut_tl %>% 
+    left_join(min_time_noshortcut_tl, by = "track") %>% 
+    mutate(time_saved = time.y - time.x) %>% 
+    select(track, time_saved, time.y, time.x,
+           shortcut.y, shortcut.x, everything()) %>% 
+    mutate(track = fct_reorder(track, time_saved)) %>% 
+    ggplot(aes(time_saved, track)) +
+    geom_col() +
+    labs(x = "Record time saved (in seconds)",
+         y = "",
+         title = "On which track does the shortcut save the most time? (Three laps)") +
+    ggthemes::theme_fivethirtyeight(base_family = "serif") 
+
+plotly::ggplotly(p3, tooltip = "time_saved")
+```
+
+
+# Which is the longest standing world record?
+
+```{r}
+records %>% 
+    slice_max(record_duration, n = 1) %>% 
+    select(track, record_duration, everything()) %>% 
+    mutate(track = fct_reorder(track, record_duration))
+```
+
+The **longest standing world record** is maintained by **Alex G** for about **ten years (3659 days)** at track - Yoshi Valley.
+
+# Who is the player with the most world records?
+
+```{r}
+drivers %>% 
+    group_by(player) %>% 
+    slice_max(total, n = 1, with_ties = FALSE) %>% 
+    arrange(desc(total)) %>% 
+    ungroup() %>% 
+    slice(1:25) %>%
+    mutate(player = fct_reorder(player, total)) %>% 
+    ggplot(aes(total, player, fill = nation)) +
+    geom_col() +
+    geom_text(aes(label = total), hjust = 1.1,
+              family = "serif") +
+    labs(x = "Total world records",
+         y = "",
+         title = "Who is the player with the most world records?",
+         fill = "Nationality") +
+    ggthemes::theme_fivethirtyeight(base_family = "serif") 
+```
+
+Penev is the player with the most world records (344).
+
+# Who are recent players?
+
+```{r}
+records %>% 
+    group_by(player) %>% 
+    slice_max(date, n = 1, with_ties = FALSE) %>% 
+    arrange(desc(date)) %>% 
+    select(player, date, everything()) 
+```
+
+Most recent players are **abney317, MR, iMathII, Weatherton, Dan, VAJ, Smurfy, Zoran, Jonesy, and Kyman**.
+
+
+# What factors determine the time of a world record?
+
+
+## Overall model
+### Check reference level for each factor variable
+
+```{r}
+table(records$track)
+table(records$type)
+table(records$shortcut)
+table(records$player)
+table(records$system_played)
+```
+
+Reference level is by default ordered **alphabetically**. Thus, the first item for each table is the reference level for each factor variable.
+
+### Coefficients plot
+
+```{r}
+library(broom)
+p4 <- records %>% 
+    mutate(across(track:system_played, as.factor)) %>% 
+    lm(time ~ track + type + shortcut + player + system_played + year,
+       data = .) %>% 
+    tidy(conf.int = TRUE) %>% 
+    filter(p.value <= 0.05,
+           term != "(Intercept)") %>% 
+    mutate(term = fct_reorder(term, estimate)) %>% 
+    ggplot(aes(estimate, term)) +
+    geom_col(fill = "lightblue", color = "black",
+             alpha = 0.7) +
+    geom_errorbarh(aes(xmax = conf.high, xmin = conf.low),
+                   height = 0.2, size = 1) +
+    geom_vline(xintercept = 0) +
+    labs(x = "Coefficients",
+         y = "Variables",
+         title = "Significant (P <= 0.05) predictors for the time of world records",
+         caption = "Reference levels in parathenses: track (Banshee Boardwalk), player (ABE)") +
+    ggthemes::theme_clean(base_family = "serif")
+
+plotly::ggplotly(p4, tooltip = c("estimate", "conf.low", "conf.high"))
+```
+
+Several variables are statistically significant (p < = 0.05) to predictor the time of world records. Their effects are either positive (increased time) or negative (decreased time). For instance, variable `track` is an importance predictor. Comparing to playing on track - Banshee Boardwalk, **the record time increases about 140 seconds or 2 minutes when playing on track - Rainbow Road**. Reversely, some players are significantly better in reducing the time of world records. For instance, player **Raffy** reduces the time of world records by about 170 seconds comparing to player **ABE**. Besides, `system` and `shortcut` are also significant predictors. Playing on **PAL** system increases the average record time by about 15 seconds. Using **shortcut** decreases the average record time by about 25 seconds.
+
+
+## Model at track level
+
+```{r}
+library(purrr)
+library(tidytext)
+p5 <- records %>% 
+    mutate(across(track:system_played, as.factor)) %>% 
+    na.omit() %>%
+    group_nest(track) %>% 
+    mutate(lm_model = map(data,
+                          ~lm(time ~ player + system_played + year, data = .)),
+           # excluding variables type and shortcut from the model because 
+           # these variables only have one level in some subsets 
+           tidied = map(lm_model, ~ tidy(.x, conf.int = TRUE))) %>% 
+    unnest(tidied) %>% 
+    filter(p.value <= 0.05,
+           term != "(Intercept)") %>% 
+    group_by(track) %>% 
+    mutate(term = reorder_within(term, estimate, track)) %>% 
+    ggplot(aes(estimate, term)) +
+    geom_col(aes(fill = track, color = track),
+             alpha = 0.7, show.legend = FALSE) +
+    geom_errorbarh(aes(xmax = conf.high, xmin = conf.low),
+                   height = 0.2, size = 1) +
+    scale_y_reordered() +
+    facet_wrap(~track, scales = "free",
+               ncol = 3) +
+    labs(x = "Coefficients",
+         y = "Variables",
+         title = "Significant (P <= 0.05) predictors for the time of world records by track") +
+    ggthemes::theme_clean(base_family = "serif") +
+    theme(legend.position = "none")
+    
+plotly::ggplotly(p5, tooltip = c("estimate", "conf.low", "conf.high"))
+```
+
+It is worth noting that **not all variables are significant** in predicting the time of world records when we break down them by track. Based on the chart, variables are positively associated with the change in record time in tracks such as **Banshee Boardwalk**, **D.K.'s Jungle Parkway**, **Frappe Snowland**, **Koopa Troopa Beach**, **Luigi Raceway**, and **Toad's Turnpike**, while variables with negative associations can be found in two tracks: **Kalimari Desert and Rainbow Road**. 
