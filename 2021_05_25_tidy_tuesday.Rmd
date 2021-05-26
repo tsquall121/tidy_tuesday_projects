@@ -39,6 +39,35 @@ drivers <- tt$drivers
     
 ```
 
+# Distribution of the world record time
+
+```{r}
+records %>% 
+    ggplot(aes(time)) +
+    geom_histogram(binwidth = 10,
+                   color = "black",
+                   fill = "lightblue") +
+    geom_vline(aes(xintercept = median(time, na.rm = TRUE)),
+               color = "red", 
+               lty = 2,
+               size = 1) +
+    geom_vline(aes(xintercept = mean(time, na.rm = TRUE)),
+               color = "blue", 
+               lty = 2,
+               size = 1) +
+    geom_text(aes(x = median(time, na.rm = TRUE), y = 570),
+              label = "Median = 86.19",
+              hjust = 1.05,
+              color = "red") +
+    geom_text(aes(x = mean(time, na.rm = TRUE), y = 570),
+              label = "Mean = 90.62",
+              hjust = -0.05,
+              color = "blue") +
+    labs(x = "Record time (seconds)",
+         y = "Count",
+         title = "Distribution of the world record time")
+```
+
 # How did the world records develop over time
 
 ```{r}
@@ -390,7 +419,6 @@ p5 <- records %>%
     labs(x = "Coefficients",
          y = "Variables",
          title = "Significant (P <= 0.05) predictors for the time of world records by track") +
-    ggthemes::theme_clean(base_family = "serif") +
     theme(legend.position = "none")
     
 plotly::ggplotly(p5, tooltip = c("estimate", "conf.low", "conf.high"))
