@@ -1,0 +1,272 @@
+---
+title: "TidyTemplate"
+date: 2020-10-26
+output: html_output
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly \#TidyTuesday event! Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data. While the dataset will be "tamed", it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format. The goal of TidyTuesday is to apply your R skills, get feedback, explore other's work, and connect with the greater \#RStats community! As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+library(lubridate)
+library(maps)
+library(maptools)
+library(mapdata)
+library(ggmap)
+theme_set(theme_light())
+
+```
+
+# Load the weekly Data
+
+Download the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2020-10-27")
+wind_turbine <- tt$`wind-turbine`
+```
+
+# Explore the data
+
+```{r}
+skimr::skim(wind_turbine)
+
+```
+
+## Which province has the most wind turbines?
+
+```{r}
+wind_turbine %>% 
+    add_count(turbine_identifier) %>% 
+    select(province_territory, turbine_identifier, n) %>% 
+    group_by(province_territory) %>% 
+    summarize(num_turbine = sum(n)) %>% 
+    arrange(desc(num_turbine)) %>% 
+    ggplot(aes(num_turbine, fct_reorder(province_territory, num_turbine),
+               fill = province_territory))+
+    geom_bar(stat = "identity", show.legend = FALSE) +
+    labs(x = "# of Turbines",
+         y = "",
+         title = "Which province has the most wind turbines?")
+```
+
+## Which province has the most distinct projects?
+
+```{r}
+wind_turbine %>% 
+    group_by(province_territory, project_name) %>% 
+    summarize(distinct_projects = n_distinct(project_name)) %>% 
+    ungroup() %>% 
+    group_by(province_territory) %>% 
+    summarize(total_distinct_projects = sum(distinct_projects)) %>% 
+    arrange(desc(total_distinct_projects))%>% 
+    ggplot(aes(total_distinct_projects,
+               fct_reorder(province_territory, total_distinct_projects),
+               fill = province_territory))+
+    geom_bar(stat = "identity", show.legend = FALSE) +
+    labs(x = "# of Distinct Projects",
+         y = "",
+         title = "Which province has the most distinct projects?")
+    
+```
+
+## Top 10 projects in total project capacity in megawatts
+
+```{r}
+wind_turbine %>% 
+    slice_max(total_project_capacity_mw, n = 10, with_ties = FALSE) %>% 
+    select(province_territory, project_name, total_project_capacity_mw)
+```
+
+## Top 10 turbine capacity in kilowatts
+
+```{r}
+wind_turbine %>% 
+    slice_max(turbine_rated_capacity_k_w, n = 10, with_ties = FALSE) %>% 
+    select(province_territory, project_name, total_project_capacity_mw, turbine_identifier, turbine_rated_capacity_k_w) %>% 
+    ggplot(aes(turbine_rated_capacity_k_w,
+               fct_reorder(turbine_identifier, turbine_rated_capacity_k_w),
+               fill = province_territory)) +
+    geom_col(stat = "identity") +
+    geom_text(aes(label = project_name), hjust = 1, check_overlap = TRUE) +
+    labs(x = "Turbine Capacity in Kilowatts",
+         y = "Turbine Identifier",
+         fill = "Province",
+         title = "Top 10 Turbine Capacity in Kilowatts")
+```
+
+## Top 10 turbines with the biggest rotor
+
+```{r}
+wind_turbine %>% 
+    slice_max(rotor_diameter_m, n = 10, with_ties = FALSE) %>% 
+    select(province_territory, project_name, rotor_diameter_m)
+```
+
+## Top 10 highest turbine
+
+```{r}
+wind_turbine %>% 
+    slice_max(hub_height_m, n = 10, with_ties = FALSE) %>% 
+    select(province_territory, project_name, hub_height_m)
+```
+
+## Top 5 newest and oldest turbines
+
+```{r}
+wind_turbine %>% 
+    mutate(commissioning_date = parse_number(commissioning_date)) %>% 
+    select(province_territory, 
+           project_name,
+           turbine_identifier,
+           commissioning_date) %>% 
+    arrange(desc(commissioning_date)) %>% 
+    slice(c(1:5, tail(row_number()), n = 5))
+```
+
+
+## Top 10 most popular Manufacturer of turbines
+
+```{r}
+wind_turbine %>% 
+    count(manufacturer, sort = TRUE) %>% 
+    slice(1:10) %>% 
+    ggplot(aes(n, fct_reorder(manufacturer, n))) +
+    geom_bar(stat = "identity") +
+    labs(x = "# of Turbines",
+         y = "Manufacturer",
+         title = "Top 10 Most Popular Manufacturer of Turbines")
+```
+
+## Do turbines with larger rotor have higher capacity?
+
+```{r}
+wind_turbine %>% 
+    ggplot(aes(rotor_diameter_m, turbine_rated_capacity_k_w)) +
+    geom_point(alpha = 0.1,
+               show.legend = FALSE) + 
+    geom_smooth(method = "lm") +
+    geom_text(aes(label = turbine_identifier), 
+              hjust = 1, 
+              size = 2,
+              check_overlap = TRUE) +
+    facet_wrap(~province_territory) +
+    labs(x = "Rotor Size in Meters",
+         y = "Turbine Capacity in Kilowatts",
+         title = "Do turbines with larger rotor have higher capacity?")
+```
+
+## Do turbines with higher hub height have higher capacity?
+
+```{r}
+wind_turbine %>% 
+    ggplot(aes(hub_height_m, turbine_rated_capacity_k_w)) +
+    geom_point(alpha = 0.1,
+               show.legend = FALSE) + 
+    geom_smooth(method = "lm") +
+    geom_text(aes(label = turbine_identifier), 
+              hjust = 1, 
+              size = 2,
+              check_overlap = TRUE) +
+    facet_wrap(~province_territory) +
+    labs(x = "Hub Height in Meters",
+         y = "Turbine Capacity in Kilowatts",
+         title = "Do turbines with higher hub height have higher capacity?")
+```
+
+## Are turbine hub height and rotor size correlated?
+
+```{r}
+wind_turbine %>% 
+    ggplot(aes(hub_height_m, rotor_diameter_m)) +
+    geom_point(alpha = 0.1,
+               show.legend = FALSE) + 
+    geom_smooth(method = "lm") +
+    geom_text(aes(label = turbine_identifier), 
+              hjust = 1, 
+              size = 2,
+              check_overlap = TRUE) +
+    facet_wrap(~province_territory) +
+    labs(x = "Hub Height in Meters",
+         y = "Rotor Size in Meters",
+         title = "Are turbine hub height and rotor size correlated?")
+```
+
+## Do newer commissioned turbines have higher capacity?
+
+```{r}
+wind_turbine %>% 
+    ggplot(aes(parse_number(commissioning_date), turbine_rated_capacity_k_w)) +
+    geom_point(alpha = 0.1,
+               show.legend = FALSE) + 
+    geom_smooth(method = "lm") +
+    geom_text(aes(label = turbine_identifier), 
+              hjust = 1, 
+              size = 2,
+              check_overlap = TRUE) +
+    facet_wrap(~province_territory) +
+    labs(x = "Turbine Commissioning Year",
+         y = "Turbine Capacity in Kilowatts",
+         title = "Do newer turbines have higher capacity?")
+```
+
+## Where are the wind turbines?
+
+```{r}
+turbine_location <- wind_turbine %>% 
+    make_bbox(lon = longitude, lat = latitude)
+
+turbine_map <- get_map(location = turbine_location, 
+                       source = "osm", 
+                       maptype = "roadmap")
+
+ggmap(turbine_map) + 
+    geom_jitter(data = wind_turbine,
+               mapping = aes(x = longitude,
+                             y = latitude,
+                             color = province_territory)) +
+    labs(x = "Longitude of Turbines",
+         y = "Latitude of Turbines",
+         color = "Province",
+         title = "Where are the wind turbines?")
+```
+
+
+## Julia
+
+```{r}
+turbines_df <- wind_turbine %>%
+  transmute(
+    turbine_capacity = turbine_rated_capacity_k_w,
+    rotor_diameter_m,
+    hub_height_m,
+    commissioning_date = parse_number(commissioning_date),
+    province_territory = fct_lump_n(province_territory, 10),
+    model = fct_lump_n(model, 10)
+  ) %>%
+  filter(!is.na(turbine_capacity)) %>%
+  mutate_if(is.character, factor)
+```
+
+
+
+```{r}
+turbines_df %>%
+  select(turbine_capacity:commissioning_date) %>%
+  pivot_longer(rotor_diameter_m:commissioning_date) %>%
+  ggplot(aes(turbine_capacity, value)) +
+  geom_hex(bins = 15, alpha = 0.8) +
+  geom_smooth(method = "lm") +
+  facet_wrap(~name, scales = "free_y") +
+  labs(y = NULL) +
+  scale_fill_gradient(high = "cyan3")
+```
+

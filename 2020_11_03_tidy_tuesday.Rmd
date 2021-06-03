@@ -1,0 +1,66 @@
+---
+title: "TidyTemplate"
+date: 2020-11-07
+output: html_output
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly #TidyTuesday event!
+Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data.
+While the dataset will be “tamed”, it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format.
+The goal of TidyTuesday is to apply your R skills, get feedback, explore other’s work, and connect with the greater #RStats community!
+As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+theme_set(theme_light())
+
+
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2020-11-03")
+ikea <- tt$ikea
+skimr::skim(ikea)
+
+ikea <- ikea %>% 
+    mutate(across(.cols = c("category", "other_colors", "designer"),
+                  .fns = as_factor)) %>% 
+    select(-1)
+```
+
+## Who designed the most number of furnitures?
+
+```{r}
+ikea %>%
+    count(designer, sort = TRUE) %>% 
+    slice_head(n = 15) %>% 
+    ggplot(aes(n, fct_reorder(designer, n))) +
+    geom_bar(fill = "lightblue", color = "black",
+             stat = "identity", show.legend = FALSE) +
+    geom_text(aes(label = n), hjust = 1, check_overlap = TRUE) +
+    labs(x = "# of Furnitures Designed",
+         y = "",
+         title = "Who designed the most number of furnitures")
+    
+```
+
+## Top 15 biggest future in terms of volumns?
+
+```{r}
+ikea %>% 
+    mutate(volumn = depth*height*width) %>% 
+    slice_max(volumn, n = 15, with_ties = FALSE) %>% 
+```
+

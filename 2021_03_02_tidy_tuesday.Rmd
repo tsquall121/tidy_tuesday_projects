@@ -1,0 +1,143 @@
+---
+title: "TidyTemplate"
+date: 2021-03-02
+output: html_output
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly #TidyTuesday event!
+Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data.
+While the dataset will be “tamed”, it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format.
+The goal of TidyTuesday is to apply your R skills, get feedback, explore other’s work, and connect with the greater #RStats community!
+As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+theme_set(theme_light())
+
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2021-03-02")
+tt
+youtube <- tt$youtube
+```
+
+# EDA
+
+```{r}
+youtube %>% 
+    skimr::skim()
+
+# each observation stands for one ad
+
+
+# Top 10 most viewed, liked, disliked, and commented ads for a single year
+youtube %>% 
+    slice_max(view_count, n = 10) %>% 
+    select(year, brand, view_count, funny:use_sex, title) 
+
+youtube %>% 
+    slice_max(like_count, n = 10) %>% 
+    select(year, brand, like_count, funny:use_sex, title) 
+
+youtube %>% 
+    slice_max(dislike_count, n = 10) %>% 
+    select(year, brand, dislike_count, funny:use_sex, title)
+
+youtube %>% 
+    slice_max(comment_count, n = 10) %>% 
+    select(year, brand, comment_count, funny:use_sex, title) 
+
+```
+
+
+```{r}
+youtube %>% 
+    count(brand, sort = TRUE) %>% 
+    ggplot(aes(n, fct_reorder(brand, n))) +
+    geom_col(color = "black", fill = "lightblue",
+             alpha = 0.7) +
+    geom_text(aes(label = n), hjust = -0.2, color = "red", size = 4.5) +
+    labs(x = "Total # of ads",
+         y = "Brand",
+         title = "Total # of ads broadcasted during Superbowl by brands")
+
+youtube %>% 
+    count(brand, sort = TRUE) %>% 
+    ggplot(aes(n, fct_reorder(brand, n))) +
+    geom_point(aes(size = n, color = brand)) +
+    geom_errorbarh(aes(xmin = 0, xmax = n, color = brand,
+                       height = 0, size = 2)) +
+    geom_text(aes(label = n, color = brand), hjust = -0.6) +
+    expand_limits(x = 0, y = 0) +
+    theme(legend.position = "none",
+          panel.grid.major.y = element_blank()) +
+    labs(x = "Total # of ads",
+         y = "Brand",
+         title = "Total # of ads broadcasted during Superbowl by brands")
+```
+
+
+```{r}
+youtube %>% 
+    group_by(year) %>% 
+    count(brand, sort = TRUE) %>% 
+    ggplot(aes(year, n, fill = brand)) +
+    geom_col() +
+    labs(x = "Year",
+         y = "Total # of ads",
+         title = "Total # of ads per year",
+         subtitle = "Breakdown by brand",
+         fill = "Brand")
+```
+
+```{r}
+youtube %>% 
+    group_by(brand) %>% 
+    summarize(total_like_count = sum(like_count, na.rm = TRUE)) %>% 
+    ggplot(aes(total_like_count, fct_reorder(brand, total_like_count))) +
+    geom_col() +
+    scale_x_continuous(labels = comma) +
+    labs(x = "# of likes",
+         y = "Brand",
+         title = "Total # of likes for different brands over time")
+
+youtube %>% 
+    group_by(brand) %>% 
+    summarize(total_dislike_count = sum(dislike_count, na.rm = TRUE)) %>% 
+    ggplot(aes(total_dislike_count, fct_reorder(brand, total_dislike_count))) +
+    geom_col() +
+    scale_x_continuous(labels = comma) +
+    labs(x = "# of dislikes",
+         y = "Brand",
+         title = "Total # of dislikes for different brands over time") 
+
+youtube %>% 
+    group_by(brand) %>% 
+    summarize(total_comment_count = sum(comment_count, na.rm = TRUE)) %>% 
+    ggplot(aes(total_comment_count, fct_reorder(brand, total_comment_count))) +
+    geom_col() +
+    scale_x_continuous(labels = comma) +
+    labs(x = "# of comments",
+         y = "Brand",
+         title = "Total # of comments for different brands over time")
+```
+
+```{r}
+youtube %>% 
+    pivot_longer()
+    
+```
+

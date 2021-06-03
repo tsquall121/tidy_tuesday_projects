@@ -1,0 +1,455 @@
+---
+title: "TidyTemplate"
+date: 2021-05-11
+output: html_output
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly #TidyTuesday event!
+Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data.
+While the dataset will be “tamed”, it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format.
+The goal of TidyTuesday is to apply your R skills, get feedback, explore other’s work, and connect with the greater #RStats community!
+As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(scales)
+theme_set(theme_light())
+```
+
+# Load the weekly Data
+
+Download the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2021-05-11")
+broadband_county <- tt$broadband %>% 
+    janitor::clean_names() %>% 
+    mutate(broadband_availability_per_fcc = as.numeric(broadband_availability_per_fcc),
+           broadband_usage = as.numeric(broadband_usage))
+broadband_zip <- tt$broadband_zip %>% 
+    janitor::clean_names()
+```
+
+## Counties with highest broadband access in each state
+```{r}
+library(tidytext)
+broadband_county %>% 
+    group_by(st) %>% 
+    slice_max(broadband_availability_per_fcc, n = 3, with_ties = FALSE) %>% 
+    mutate(county_name = reorder_within(county_name,
+                                        broadband_availability_per_fcc,
+                                        st)) %>%
+    ungroup() %>% 
+    ggplot(aes(broadband_availability_per_fcc, county_name,
+               fill = county_name)) +
+    geom_col() +
+    facet_wrap(~st, scales = "free", ncol = 6) +
+    scale_x_continuous(labels = percent) +
+    scale_y_reordered() +
+    labs(x = "Percentage of people per county with access to broadband",
+         y = "",
+         title = "Counties with highest broadband accessibility in each state") +
+    theme(legend.position = "none")
+```
+
+
+## Counties with lowest broadband access in each state
+
+```{r}
+broadband_county %>% 
+    group_by(st) %>% 
+    slice_min(broadband_availability_per_fcc, n = 3, with_ties = FALSE) %>% 
+    mutate(county_name = reorder_within(county_name,
+                                        broadband_availability_per_fcc,
+                                        st)) %>% 
+    ungroup() %>% 
+    ggplot(aes(broadband_availability_per_fcc, county_name,
+               fill = county_name)) +
+    geom_col() +
+    facet_wrap(~st, scales = "free", ncol = 6) +
+    scale_x_continuous(labels = percent) +
+    scale_y_reordered() +
+    labs(x = "Percentage of people per county with access to broadband",
+         y = "",
+         title = "Counties with Lowest broadband accessibility in each state") +
+    theme(legend.position = "none")
+```
+
+## Counties with highest broadband usage in each state
+
+```{r}
+broadband_county %>% 
+    group_by(st) %>% 
+    slice_max(broadband_usage, n = 3, with_ties = FALSE) %>% 
+    mutate(county_name = reorder_within(county_name,
+                                        broadband_usage,
+                                        st)) %>% 
+    ungroup() %>% 
+    ggplot(aes(broadband_usage, county_name,
+               fill = county_name)) +
+    geom_col() +
+    facet_wrap(~st, scales = "free", ncol = 6) +
+    scale_x_continuous(labels = percent) +
+    scale_y_reordered() +
+    labs(x = "Percentage of people per county use broadband",
+         y = "",
+         title = "Counties with highest broadband usage in each state") +
+    theme(legend.position = "none")
+```
+
+## Counties with lowest broadband usage in each state
+
+```{r}
+broadband_county %>% 
+    group_by(st) %>% 
+    slice_min(broadband_usage, n = 3, with_ties = FALSE) %>% 
+    mutate(county_name = reorder_within(county_name,
+                                        broadband_usage,
+                                        st)) %>% 
+    ungroup() %>% 
+    ggplot(aes(broadband_usage, county_name,
+               fill = county_name)) +
+    geom_col() +
+    facet_wrap(~st, scales = "free", ncol = 6) +
+    scale_x_continuous(labels = percent) +
+    scale_y_reordered() +
+    labs(x = "Percentage of people per county use broadband",
+         y = "",
+         title = "Counties with lowest broadband usage in each state") +
+    theme(legend.position = "none")
+```
+
+## County map
+
+```{r}
+library(tidygeocoder)
+library(leaflet)
+library(leaflegend)
+# broadband_county_geocoded <- broadband_county %>% 
+#     geocode(county = county_name,
+#             state = st,
+#             method = "osm",
+#             verbose = TRUE)
+#write_csv(broadband_county_geocoded, "broadband_county_geocoded.csv")
+
+broadband_county_geocoded <- read_csv("broadband_county_geocoded.csv")
+
+broadband_county_geocoded <- broadband_county_geocoded %>% 
+    mutate(popup_label = paste(paste0("<b>County: ", "</b>",
+                                      county_name, ", ", st),
+                               paste0("<b>Broadband availability: ", "</b>",
+                                      broadband_availability_per_fcc*100, "%"),
+                               paste0("<b>Broadband usage: ", "</b>",
+                                      broadband_usage*100, "%"),
+                               sep = "<br/>")) %>% 
+    filter(!is.na(broadband_availability_per_fcc),
+           !is.na(broadband_usage))
+           
+pal <- colorNumeric(palette = "RdYlBu",
+                    domain = broadband_county_geocoded$broadband_usage*100)
+sizes <- sizeNumeric(values = broadband_county_geocoded$broadband_availability_per_fcc*100,
+                     baseSize = 0)
+
+leaflet() %>% 
+    addProviderTiles("Stamen.TonerLite") %>% 
+    addCircleMarkers(data = broadband_county_geocoded,
+                     radius = ~ broadband_availability_per_fcc*10,
+                     stroke = FALSE,
+                     fillOpacity = 0.7,
+                     popup = ~popup_label,
+                     fillColor = ~pal(broadband_usage*100)) %>%
+    addLegendSize(values = broadband_county_geocoded$broadband_availability_per_fcc*100,
+                  position = "topright",
+                  pal = pal,
+                  title = "Broadband Availability",
+                  shape = c("circle"),
+                  orientation = c('vertical', 'horizontal'),
+                  opacity = 0.7,
+                  breaks = 6) %>% 
+       addLegend(data = broadband_county_geocoded,
+              position = "topright",
+              values = ~broadband_usage*100,
+              title = "Broadband Usage",
+              pal = pal)
+```
+
+### County choropleth map
+
+```{r}
+library(tigris)
+library(sf)
+counties_sf <- counties(state = unique(broadband_county$st),
+                        cb = TRUE,
+                        resolution = "500k",
+                        year = 2019) 
+
+# Add leading zeros to county_id to join with GEOID in counties_sf
+
+broadband_county <- broadband_county %>% 
+     mutate(county_id = sprintf("%05d", county_id)) #c-style string formatting
+
+broadband_county_sf <- counties_sf %>% 
+    right_join(broadband_county, by = c("GEOID" = "county_id"))
+
+
+
+mytext <- paste(paste0("<b>County: </b>", broadband_county_sf$county_name, ", ",
+                broadband_county_sf$st),
+                paste0("<b>Broadband Usage: </b>",
+                broadband_county_sf$broadband_usage*100, "%"),
+                sep = "<br/>") %>% 
+    lapply(htmltools::HTML)
+
+pal <- colorBin(palette = "RdYlBu",
+                    domain = broadband_county_sf$broadband_usage*100,
+                 bins = 5)
+
+leaflet() %>%
+    addProviderTiles("Stamen.TonerLite") %>%
+    addPolygons(data = broadband_county_sf,
+                stroke = TRUE,
+                fillColor = ~pal(broadband_usage*100),
+                fillOpacity = 0.9,
+                color = "white",
+                weight = 0.3,
+                label = mytext,
+                labelOptions = labelOptions(
+                    style = list("font-weight" = "normal",
+                                 padding = "3px 8px"),
+                    textsize = "13px",
+                    direction = "auto" 
+                )) %>% 
+    addLegend(pal = pal,
+              values = broadband_county_sf$broadband_usage,
+              opacity = 0.9,
+              title = paste("Percentage of people using the internet", 
+              "at 25Mbps or above per county",
+              sep = "<br/>"),
+              labFormat = labelFormat(suffix = "%"),
+              position = "bottomleft")
+    
+```
+
+### mapping with tmap (static)
+
+```{r}
+library(tmap)
+us_states_map <- tm_shape(broadband_county_sf %>% 
+             filter(!st %in% c("AK", "HI")), projection = 2163) +
+    tm_polygons(col = "broadband_usage",
+                palette = "RdYlBu",
+                title = "% broadband usage")  +
+    tm_layout(frame = FALSE,
+              legend.position = c("right", "top"))
+
+hawaii_map <- tm_shape(broadband_county_sf %>% 
+             filter(st %in% c("HI"))) +
+    tm_polygons(col = "broadband_usage",
+                palette = "RdYlBu")  +
+    tm_layout(frame = FALSE,
+              legend.show = FALSE)
+
+alaska_map <- tm_shape(broadband_county_sf %>% 
+             filter(st %in% c("AK"))) +
+    tm_polygons(col = "broadband_usage",
+                palette = "RdYlBu")  +
+    tm_layout(frame = FALSE,
+              legend.show = FALSE)
+
+us_states_map
+print(hawaii_map, vp = grid::viewport(0.35, 0.1, width = 0.2, height = 0.1))
+print(alaska_map, vp = grid::viewport(0.15, 0.15, width = 0.3, height = 0.3))
+
+```
+
+### mapping with tmap (interactive)
+
+```{r}
+library(tmap)
+tmap_mode("view")
+tm_shape(broadband_county_sf) +
+    tm_polygons(col = "broadband_usage",
+                palette = "RdYlBu",
+                title = "% broadband usage",
+                popup.vars = c("county_name", "st", "broadband_usage")) +
+    tm_layout(frame = FALSE,
+              legend.position = c("right", "top"),
+              legend.format = list(
+                  suffix = "%")) +
+    tm_basemap(server = "Stamen.TonerLite")
+
+```
+
+### Show broadband availability and usage seperately
+```{r}
+pal1 <- colorNumeric(palette = "YlGnBu",
+                    domain = broadband_county_geocoded$broadband_availability_per_fcc*100)
+leaflet() %>% 
+    addProviderTiles('CartoDB', group = 'CartoDB') %>% 
+    addProviderTiles('Esri.WorldGrayCanvas', group = 'Esri.WorldGrayCanvas') %>%       addCircleMarkers(data = broadband_county_geocoded,
+                     radius = 10,
+                     stroke = FALSE,
+                     fillOpacity = 0.7,
+                     popup = ~popup_label,
+                     fillColor = ~pal1(broadband_availability_per_fcc*100),
+                     group = "broadband_availability") %>% 
+    addCircleMarkers(data = broadband_county_geocoded,
+                     radius = 10,
+                     stroke = FALSE,
+                     fillOpacity = 0.7,
+                     popup = ~popup_label,
+                     fillColor = ~pal(broadband_usage*100),
+                     group = "broadband_usage") %>%
+    addLayersControl(baseGroups = c('CartoDB', 'Esri.WorldGrayCanvas'),
+                     overlayGroups = c("broadband_availability",
+                                       "broadband_usage"))
+```
+
+## Broadband zipcode
+
+```{r}
+library(zipcodeR)
+# zip_geocode <- apply(broadband_zip %>% select(postal_code), 2, FUN = geocode_zip)
+zip_geocode <- map_df(broadband_zip %>% select(postal_code), geocode_zip) %>% 
+    mutate(zipcode = as.numeric(zipcode))
+broadband_zip_geocoded <- broadband_zip %>% 
+    left_join(zip_geocode, by = c("postal_code" = "zipcode"))
+```
+
+
+
+
+## Zipcode with highest broadband usage in each state
+
+```{r}
+broadband_zip_geocoded %>% 
+    group_by(st) %>% 
+    slice_max(broadband_usage, n = 3, with_ties = FALSE) %>% 
+    mutate(postal_code = reorder_within(postal_code,
+                                        broadband_usage,
+                                        st)) %>% 
+    ungroup() %>% 
+    ggplot(aes(broadband_usage, postal_code,
+               fill = postal_code)) +
+    geom_col() +
+    geom_text(aes(label = county_name), size = 3, hjust = 1.5) +
+    facet_wrap(~st, scales = "free") +
+    scale_x_continuous(labels = percent) +
+    scale_y_reordered() +
+    labs(x = "Percentage of people per zipcode use broadband",
+         y = "",
+         title = "Zipcode with highest broadband usage in each state") +
+    theme(legend.position = "none")
+```
+
+
+## Zipcode with lowest broadband usage in each state
+
+```{r}
+broadband_zip_geocoded %>% 
+    group_by(st) %>% 
+    slice_min(broadband_usage, n = 3, with_ties = FALSE) %>%
+    mutate(postal_code = reorder_within(postal_code,
+                                        broadband_usage,
+                                        st)) %>% 
+    ungroup() %>% 
+    ggplot(aes(broadband_usage, postal_code,
+               fill = postal_code)) +
+    geom_col() +
+    geom_text(aes(label = county_name), size = 3, hjust = 1) +
+    facet_wrap(~st, scales = "free", ncol = 6) +
+    scale_x_continuous(labels = percent) +
+    scale_y_reordered() +
+    labs(x = "Percentage of people per zipcode use broadband",
+         y = "",
+         title = "Zipcode with lowest broadband usage in each state") +
+    theme(legend.position = "none")
+```
+
+## Zipcode with highest broadband usage in each county
+```{r}
+broadband_zip_geocoded %>%
+    filter(!st %in% c("AK", "HI")) %>% 
+    group_by(st, county_name) %>% 
+    slice_max(broadband_usage, n = 1, with_ties = FALSE) %>% 
+    ungroup() %>% 
+    ggplot(aes(lng, lat, color = broadband_usage)) +
+    geom_point() +
+    borders(database = "county") +
+    scale_color_gradient2(name = "Broadband Usage",
+                          low = "blue",
+                          mid = "white",
+                          high = "red",
+                          midpoint = 0.5,
+                          space = "Lab",
+                          labels = percent) +
+    labs(title = "Zipcode with highest broadband usage in each county",
+         x = "Longitude",
+         y = "Latitude") +
+    ggthemes::theme_fivethirtyeight()
+    
+```
+
+## Zipcode with lowest broadband usage in each county
+
+```{r}
+broadband_zip_geocoded %>%
+    filter(!st %in% c("AK", "HI")) %>% 
+    group_by(st, county_name) %>% 
+    slice_min(broadband_usage, n = 1, with_ties = FALSE) %>% View()
+    ungroup() %>% 
+    ggplot(aes(lng, lat, color = broadband_usage)) +
+    geom_point() +
+    borders(database = "county") +
+    scale_color_gradient2(name = "Broadband Usage",
+                          low = "blue",
+                          mid = "white",
+                          high = "red",
+                          midpoint = 0.5,
+                          space = "Lab",
+                          labels = percent) +
+    labs(title = "Zipcode with lowest broadband usage in each county",
+         x = "Longitude",
+         y = "Latitude") +
+    ggthemes::theme_fivethirtyeight()
+```
+
+
+## Map
+
+```{r}
+broadband_zip_geocoded <- broadband_zip_geocoded %>% 
+    mutate(popup_label = paste(paste0("<b>Zipcode: ", "</b>",
+                                      postal_code),
+                               paste0("<b>County: ", "</b>",
+                                      county_name, ", ", st),
+                               paste0("<b>Broadband usage: ", "</b>",
+                                      broadband_usage*100, "%"),
+                               sep = "<br/>")) %>% 
+    filter(!is.na(broadband_usage))
+
+pal <- colorNumeric(palette = "RdYlBu",
+                    domain = broadband_zip_geocoded$broadband_usage*100)
+
+leaflet() %>% 
+    addProviderTiles("Stamen.TonerLite") %>% 
+    addCircleMarkers(data = broadband_zip_geocoded,
+                     radius = 4,
+                     stroke = FALSE,
+                     fillOpacity = 0.5,
+                     popup = ~popup_label,
+                     fillColor = ~pal(broadband_usage*100)) %>%
+       addLegend(data = broadband_zip_geocoded,
+              position = "topright",
+              values = ~broadband_usage*100,
+              title = "Broadband Usage",
+              pal = pal)
+```
+
