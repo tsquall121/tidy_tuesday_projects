@@ -180,7 +180,7 @@ water %>%
 ```{r}
 # use google API to show the distribution of water source among african countries
 library(ggmap)
-register_google(key = "AIzaSyB2c-7a4NoG5qadKfP2fbAMDTMthd05RYc")
+register_google(key = "")
 
 africa_water <- water %>% 
   filter(!is.na(water_source)) %>% 
