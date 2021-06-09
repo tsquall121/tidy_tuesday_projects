@@ -1,0 +1,295 @@
+---
+title: "TidyTemplate"
+date: 2021-06-08
+output: html_output
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly \#TidyTuesday
+event! Every week we post a raw dataset, a chart or article related to
+that dataset, and ask you to explore the data. While the dataset will be
+"tamed", it will not always be tidy! As such you might need to apply
+various R for Data Science techniques to wrangle the data into a true
+tidy format. The goal of TidyTuesday is to apply your R skills, get
+feedback, explore other's work, and connect with the greater \#RStats
+community! As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(tidytuesdayR)
+library(ggthemes)
+library(scales)
+library(skimr)
+theme_set(theme_light())
+
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2021-06-08")
+tt
+```
+
+# Readme
+
+Take a look at the readme for the weekly data to get insight on the
+dataset. This includes a data dictionary, source, and a link to an
+article on the data.
+
+```{r Readme, eval = interactive()}
+
+stocked <- tt$stocked
+fishing <- tt$fishing
+```
+
+# The most common species by count
+
+```{r}
+library(tidytext)
+fishing %>%
+    count(lake, species, sort = TRUE) %>% 
+    mutate(species = reorder_within(species, n, lake)) %>% 
+    ggplot(aes(n, species, fill = lake)) +
+    geom_col() +
+    geom_text(aes(label = n), hjust = 0.35, size = 4) +
+    facet_wrap(~lake, scales = "free_y") +
+    scale_y_reordered() +
+    scale_x_continuous(labels = comma) +
+    theme(legend.position = "none") +
+    labs(x = "# of fish",
+         y = "",
+         title = "The most common species by count")
+```
+
+# The most produced fishes by species and lakes
+
+```{r}
+# check distribution of values
+
+fishing %>% 
+    ggplot(aes(values)) +
+    geom_histogram()
+
+# values is extremely right-skewed
+
+fishing %>% 
+    group_by(lake, species) %>% 
+    summarize(median_values = round(median(values, na.rm = TRUE), 1)) %>%
+    filter(median_values != 0) %>% 
+    mutate(species = reorder_within(species, median_values, lake)) %>% 
+    ggplot(aes(median_values, species, fill = lake)) +
+    geom_col() +
+    geom_text(aes(label = median_values), hjust = 0.35, size = 4) +
+    facet_wrap(~lake, scales = "free") +
+    scale_y_reordered() +
+    scale_x_continuous(labels = comma) +
+    theme(legend.position = "none") +
+    labs(x = "Production of fish in thousand pounds",
+         y = "",
+         title = "The most produced fishes by species and lakes")
+```
+
+The most produced fish species in different lakes are
+
+1.  Lake Erie: Blue Pike (2,012,000 pounds)
+
+2.  Lake Huron: Cisco and Chubs (1,344,000 pounds)
+
+3.  Lake Michigan: Cisco and Chubs (3,506,000 pounds)
+
+4.  Lake Ontario: Cisco and Chubs (599,000 pounds)
+
+5.  Lake Saint Clair: Carp (121,000 pounds)
+
+6.  Lake Superior: Cisco and Chubs (1,516,000 pounds)
+
+
+# Fish production overtime
+
+```{r}
+library(plotly)
+p <- fishing %>% 
+    group_by(lake, year) %>% 
+    summarize(median_values = round(median(values, na.rm = TRUE), 1)) %>% 
+    ungroup() %>% 
+    ggplot(aes(year, median_values, color = lake)) +
+    geom_line() +
+    facet_wrap(~lake, scales = "free") +
+    theme(legend.position = "none") +
+    labs(x = "",
+         y = "Median fish production (in thousound pounds)",
+         title = "Fish production overtime by lakes")
+
+ggplotly(p, tooltip = "median_values")
+```
+
+# Clean stocked data
+
+```{r}
+stocked_cleaned <- stocked %>% 
+  janitor::clean_names() %>% 
+  mutate(species = ifelse(species == "RBT", "RBT", "others")) %>% 
+  mutate(across(c(lake:site, stat_dist:strain,
+                  stock_meth:agency, stage, mark,
+                  validation), ~as.factor(.x))) %>% 
+  mutate(across(c(sid, tag_no), ~as.character(.x)))
+stocked_cleaned %>% skim()
+```
+
+# Predicting if species is RBT or not (EDA)
+
+```{r}
+# length is a predictor
+stocked_cleaned %>% 
+  ggplot(aes(length, species)) +
+  geom_boxplot() +
+  scale_x_log10() +
+  facet_wrap(~lake, scales = "free_x")
+```
+
+```{r}
+# weight is a predictor
+stocked_cleaned %>% 
+  ggplot(aes(weight, species)) +
+  geom_boxplot() +
+  scale_x_log10() +
+  facet_wrap(~lake, scales = "free_x")
+```
+
+```{r}
+# number of fish stocked is a predictor
+stocked_cleaned %>% 
+  ggplot(aes(no_stocked, species)) +
+  geom_boxplot() +
+  scale_x_log10() +
+  facet_wrap(~lake, scales = "free_x")
+```
+
+# Predicting if the specie is RBT or not (Modeling)
+
+```{r}
+library(tidymodels)
+library(usemodels)
+```
+
+```{r}
+set.seed(121)
+stock_split <- initial_split(stocked_cleaned,strata = species)
+stock_train <- training(split)
+stock_test <- testing(split)
+
+set.seed(123)
+stock_folds <- vfold_cv(stock_train, strata = species)
+stock_folds
+```
+
+## Create recipe
+```{r}
+library(themis)
+
+stock_rec <- recipe(species ~ sid + length + weight + no_stocked + year + lake +
+         state_prov + stage + stock_meth + validation + agency,
+       data = stock_train) %>% 
+  update_role(sid, new_role = "id") %>% 
+  step_impute_mode(stock_meth, validation, agency, stage, state_prov) %>% 
+  step_impute_median(length, weight, no_stocked) %>%
+  step_log(length, weight, no_stocked, offset = 1) %>% 
+  step_other(stage, stock_meth, agency) %>% 
+  step_downsample(species) %>%
+  step_zv(all_predictors()) %>% 
+  prep()
+  
+```
+
+## Create a logstic model
+```{r}
+logistic_spec <- 
+  logistic_reg() %>% 
+  set_mode("classification") %>% 
+  set_engine("glm")
+```
+
+## Workflow
+
+```{r}
+logistic_workflow <- 
+  workflow() %>% 
+  add_recipe(stock_rec) %>% 
+  add_model(logistic_spec) 
+```
+
+## Fit resample
+
+```{r}
+all_cores <- parallel::detectCores(logical = FALSE)
+
+library(doParallel)
+cl <- makePSOCKcluster(all_cores)
+registerDoParallel(cl)
+
+set.seed(12345)
+logistic_rs <- fit_resamples(logistic_workflow,
+              resamples = stock_folds,
+              control = control_resamples(save_pred = TRUE))
+
+```
+
+## Explore results
+
+```{r}
+collect_metrics(logistic_rs)
+```
+
+```{r}
+collect_predictions(logistic_rs) %>% 
+  group_by(id) %>% 
+  roc_curve(species, .pred_RBT) %>% 
+  autoplot()
+```
+
+```{r}
+conf_mat_resampled(logistic_rs, tidy = FALSE) %>% 
+  autoplot()
+```
+
+## Important variables
+
+```{r}
+library(vip)
+imp_data <- stock_rec %>% prep() %>% bake(new_data = NULL) %>% select(-sid)
+
+logistic_spec %>% 
+  set_engine("glm") %>% 
+  fit(species ~ length + weight + no_stocked + year + lake +
+         state_prov + stage + stock_meth + validation + agency,
+      data = imp_data) %>% 
+  vip(geom = "col")
+```
+
+
+```{r}
+imp_data %>% 
+  select(species, lake, stock_meth, stage) %>% 
+  pivot_longer(lake:stage, names_to = "feature", values_to = "value") %>% 
+  ggplot(aes(y = value, fill = species)) +
+  geom_bar(position = "fill") +
+  facet_grid(rows = vars(feature), scales = "free_y",
+             space = "free_y") +
+  scale_x_continuous(labels = percent) +
+  labs(fill = "Specie",
+       x = "% of species",
+       y = NULL,
+       title = "How do important variables predict species?") 
+```
+

@@ -44,7 +44,7 @@ drivers <- tt$drivers
 ```{r}
 records %>% 
     ggplot(aes(time)) +
-    geom_histogram(binwidth = 10,
+    geom_histogram(binwidth = 30,
                    color = "black",
                    fill = "lightblue") +
     geom_vline(aes(xintercept = median(time, na.rm = TRUE)),
@@ -63,6 +63,35 @@ records %>%
               label = "Mean = 90.62",
               hjust = -0.05,
               color = "blue") +
+    labs(x = "Record time (seconds)",
+         y = "Count",
+         title = "Distribution of the world record time")
+```
+
+The distribution of `time` is right-skewed and seems to show multimodality and non-normally distributed. This trend is probablity due to the nature of the game has single-lap and three-lap tracks.
+
+```{r}
+records %>% 
+    ggplot(aes(time)) +
+    geom_histogram(color = "black",
+                   fill = "lightblue") +
+    geom_vline(aes(xintercept = median(time, na.rm = TRUE)),
+               color = "red", 
+               lty = 2,
+               size = 1) +
+    geom_vline(aes(xintercept = mean(time, na.rm = TRUE)),
+               color = "blue", 
+               lty = 2,
+               size = 1) +
+    geom_text(aes(x = median(time, na.rm = TRUE), y = 570),
+              label = "Median = 86.19",
+              hjust = 1.05,
+              color = "red") +
+    geom_text(aes(x = mean(time, na.rm = TRUE), y = 570),
+              label = "Mean = 90.62",
+              hjust = -0.05,
+              color = "blue") +
+    facet_wrap(~type) +
     labs(x = "Record time (seconds)",
          y = "Count",
          title = "Distribution of the world record time")
@@ -87,7 +116,6 @@ records %>%
          color = "Shortcut usage") +
     ggthemes::theme_fivethirtyeight(base_family = "serif")
 ```
-
 
 ```{r}
 records %>% 
@@ -261,8 +289,7 @@ min_time_shortcut_sl %>%
     select(track, time_saved, time.y, time.x, shortcut.y, shortcut.x, everything())
 ```
 
-Using shortcuts **does not really save time** for **single-lap tracks**.
-## For three-lap tracks
+Using shortcuts **does not really save time** for **single-lap tracks**. \#\# For three-lap tracks
 
 ```{r}
 min_time_shortcut_tl <- records %>% 
@@ -294,7 +321,6 @@ p3 <- min_time_shortcut_tl %>%
 
 plotly::ggplotly(p3, tooltip = "time_saved")
 ```
-
 
 # Which is the longest standing world record?
 
@@ -342,11 +368,10 @@ records %>%
 
 Most recent players are **abney317, MR, iMathII, Weatherton, Dan, VAJ, Smurfy, Zoran, Jonesy, and Kyman**.
 
-
 # What factors determine the time of a world record?
 
-
 ## Overall model
+
 ### Check reference level for each factor variable
 
 ```{r}
@@ -365,8 +390,9 @@ Reference level is by default ordered **alphabetically**. Thus, the first item f
 library(broom)
 p4 <- records %>% 
     mutate(across(track:system_played, as.factor)) %>% 
-    lm(time ~ track + type + shortcut + player + system_played + year,
+    lm(log(time) ~ track + type + shortcut + player + system_played + year,
        data = .) %>% 
+    # log-transformed dependent variable due to non-normal distribution
     tidy(conf.int = TRUE) %>% 
     filter(p.value <= 0.05,
            term != "(Intercept)") %>% 
@@ -377,7 +403,7 @@ p4 <- records %>%
     geom_errorbarh(aes(xmax = conf.high, xmin = conf.low),
                    height = 0.2, size = 1) +
     geom_vline(xintercept = 0) +
-    labs(x = "Coefficients",
+    labs(x = "Coefficients (logged)",
          y = "Variables",
          title = "Significant (P <= 0.05) predictors for the time of world records",
          caption = "Reference levels in parathenses: track (Banshee Boardwalk), player (ABE)") +
@@ -386,8 +412,7 @@ p4 <- records %>%
 plotly::ggplotly(p4, tooltip = c("estimate", "conf.low", "conf.high"))
 ```
 
-Several variables are statistically significant (p < = 0.05) to predictor the time of world records. Their effects are either positive (increased time) or negative (decreased time). For instance, variable `track` is an importance predictor. Comparing to playing on track - Banshee Boardwalk, **the record time increases about 140 seconds or 2 minutes when playing on track - Rainbow Road**. Reversely, some players are significantly better in reducing the time of world records. For instance, player **Raffy** reduces the time of world records by about 170 seconds comparing to player **ABE**. Besides, `system` and `shortcut` are also significant predictors. Playing on **PAL** system increases the average record time by about 15 seconds. Using **shortcut** decreases the average record time by about 25 seconds.
-
+Several variables are statistically significant (p \< = 0.05) to predictor the time of world records. Their effects are either positive (increased time) or negative (decreased time). For instance, variable `track` is an importance predictor. Comparing to playing on track - Banshee Boardwalk, **the record time increases about** `(exp(1.06324864) - 1) * 100 = 189.58%` when playing on track - Rainbow Road**. Reversely, some players are significantly better in reducing the time of world records. For instance, player** Raffy\*\* reduces the time of world records by about \`(exp(-2.5092929697) - 1) \* 100 = -91.87%\` comparing to player **ABE**. Besides, `system` and `shortcut` are also significant predictors. Playing on **PAL** system increases the average record time by about `(exp(0.22907692) - 1) * 100 = 25.74%`. Using **shortcut** decreases the average record time by about `(exp(-0.24101549) - 1) * 100 = -21.42%`.
 
 ## Model at track level
 
@@ -399,7 +424,8 @@ p5 <- records %>%
     na.omit() %>%
     group_nest(track) %>% 
     mutate(lm_model = map(data,
-                          ~lm(time ~ player + system_played + year, data = .)),
+                          ~lm(log(time) ~ player + system_played + year,
+                              data = .)),  # log transformed
            # excluding variables type and shortcut from the model because 
            # these variables only have one level in some subsets 
            tidied = map(lm_model, ~ tidy(.x, conf.int = TRUE))) %>% 
@@ -416,7 +442,7 @@ p5 <- records %>%
     scale_y_reordered() +
     facet_wrap(~track, scales = "free",
                ncol = 3) +
-    labs(x = "Coefficients",
+    labs(x = "Coefficients (logged)",
          y = "Variables",
          title = "Significant (P <= 0.05) predictors for the time of world records by track") +
     theme(legend.position = "none")
@@ -424,4 +450,4 @@ p5 <- records %>%
 plotly::ggplotly(p5, tooltip = c("estimate", "conf.low", "conf.high"))
 ```
 
-It is worth noting that **not all variables are significant** in predicting the time of world records when we break down them by track. Based on the chart, variables are positively associated with the change in record time in tracks such as **Banshee Boardwalk**, **D.K.'s Jungle Parkway**, **Frappe Snowland**, **Koopa Troopa Beach**, **Luigi Raceway**, and **Toad's Turnpike**, while variables with negative associations can be found in two tracks: **Kalimari Desert and Rainbow Road**. 
+It is worth noting that **not all variables are significant** in predicting the time of world records when we break down them by track. Based on the chart, variables are positively associated with the change in record time in tracks such as **Banshee Boardwalk**, **D.K.'s Jungle Parkway**, **Frappe Snowland**, **Koopa Troopa Beach**, **Luigi Raceway**, and **Toad's Turnpike**, while variables with negative associations can be found in two tracks: **Kalimari Desert and Rainbow Road**.
