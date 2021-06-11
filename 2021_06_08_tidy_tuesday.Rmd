@@ -325,7 +325,8 @@ registerDoParallel(cl)
 
 set.seed(12345)
 bag_rs <- fit_resamples(bag_workflow,
-              resamples = stock_folds) # no need to save prediction for plotting important variables because the function is not avaiable for this model and the bag tree model has important variables automatically generated.
+              resamples = stock_folds,
+              control = control_resamples(save_pred = TRUE)) 
 
 ```
 
@@ -356,7 +357,7 @@ stock_fit <- last_fit(bag_workflow, stock_split)
 collect_metrics(stock_fit)
 ```
 
-**The bag tree model performed very consistently on the training set, which achieves an accuracy of 0.883.**
+**The bag tree model performed very consistently on the testing set, which achieves an accuracy of 0.883.**
 
 # Variable importance for bag tree model
 
@@ -375,31 +376,77 @@ stock_imp$fit$imp %>%
 
 In this model, `no_stock`, `weight`, and `agency` are the top 3 most important variables.
 
-
-# Save model
+# Tune bag tree model
 
 ```{r}
-# butcher the workflow to make it small by removing everything else except model
-# for prediction
-stock_wf_model <- butcher::butcher(stock_fit$.workflow[[1]])
+library(baguette)
+bag_spec_tune <- 
+  bag_tree(min_n = tune()) %>% 
+  set_engine("rpart", times = 25) %>% 
+  set_mode("classification")
 ```
 
 ```{r}
-# use lobster to check object size
-lobstr::obj_size(stock_fit$.workflow[[1]])
-lobstr::obj_size(stock_wf_model) # butchered one is much smaller
+bag_wf_tune <- 
+  workflow() %>% 
+  add_recipe(stock_rec) %>% 
+  add_model(bag_spec_tune) 
 ```
 
+# Turning bag tree model
+```{r}
+all_cores <- parallel::detectCores(logical = FALSE)
 
-# Prediction example
+library(doParallel)
+cl <- makePSOCKcluster(all_cores)
+registerDoParallel(cl)
+
+set.seed(12345)
+bag_tune <- tune_grid(object = bag_wf_tune, 
+                      resamples = stock_folds,
+                      grid = crossing(min_n = c(1, 10)),
+                      control = control_grid(save_pred = TRUE))
+```
+
 
 ```{r}
-predict(stock_wf_model, stock_test[121:131, ]) # use 10 obs
+collect_metrics(bag_tune) %>% 
+  ggplot(aes(min_n, mean)) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(~.metric, scales = "free_y") +
+  labs(x = "Minimum number of data points in a node",
+       y = "Mean score",
+       color = "Bags")
 ```
 
-# Write model
 
-```{r, eval=FALSE}
-write_rds(stock_wf_model, "stock_wf_model.rds")
+```{r}
+show_best(bag_tune, metric = "accuracy")
+```
+
+The minimum number of data points in a node can set to 1 to achieve the highest accuracy and the higher the bags the better the prediction. However, the time to train the model increase significantly. Given setting min_n = 1 increases the accuracy while not significantly increase the training time, I will only change this hyperparameter while keeping the bags to 25.
+The best accuracy so far is 0.885.
+
+
+# Finalize workflow
+```{r}
+stock_fit_tuned <- bag_wf_tune %>% 
+  finalize_workflow(select_best(bag_tune, metric = "accuracy")) %>% 
+  last_fit(stock_split)
+collect_metrics(stock_fit_tuned)
+```
+
+**The bag tree model performed very consistently on the testing set, which achieves an accuracy of 0.885.**
+
+```{r}
+collect_predictions(stock_fit_tuned) %>% 
+  roc_curve(species, .pred_RBT) %>% 
+  autoplot()
+```
+
+```{r}
+conf_mat_resampled(stock_fit_tuned, tidy = FALSE) %>% 
+  autoplot()
 ```
 
