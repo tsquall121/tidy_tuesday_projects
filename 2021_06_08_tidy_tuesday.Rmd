@@ -235,8 +235,7 @@ logistic_workflow <-
 all_cores <- parallel::detectCores(logical = FALSE)
 
 library(doParallel)
-cl <- makePSOCKcluster(all_cores)
-registerDoParallel(cl)
+registerDoParallel(all_cores)
 
 set.seed(12345)
 logistic_rs <- fit_resamples(logistic_workflow,
@@ -289,7 +288,7 @@ imp_data %>%
   facet_grid(rows = vars(feature), scales = "free_y",
              space = "free_y") +
   scale_x_continuous(labels = percent) +
-  labs(fill = "Specie",
+  labs(fill = "Species",
        x = "% of species",
        y = NULL,
        title = "How do important variables predict species?") 
@@ -317,12 +316,6 @@ bag_workflow <-
 ## Fit resample
 
 ```{r}
-all_cores <- parallel::detectCores(logical = FALSE)
-
-library(doParallel)
-cl <- makePSOCKcluster(all_cores)
-registerDoParallel(cl)
-
 set.seed(12345)
 bag_rs <- fit_resamples(bag_workflow,
               resamples = stock_folds,
@@ -395,12 +388,6 @@ bag_wf_tune <-
 
 # Turning bag tree model
 ```{r}
-all_cores <- parallel::detectCores(logical = FALSE)
-
-library(doParallel)
-cl <- makePSOCKcluster(all_cores)
-registerDoParallel(cl)
-
 set.seed(12345)
 bag_tune <- tune_grid(object = bag_wf_tune, 
                       resamples = stock_folds,
