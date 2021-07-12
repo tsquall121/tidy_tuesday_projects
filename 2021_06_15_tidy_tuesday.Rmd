@@ -1,0 +1,283 @@
+---
+title: "TidyTemplate"
+date: 2021-06-15
+output: html_output
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly #TidyTuesday event!
+Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data.
+While the dataset will be “tamed”, it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format.
+The goal of TidyTuesday is to apply your R skills, get feedback, explore other’s work, and connect with the greater #RStats community!
+As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(scales)
+library(tidytuesdayR)
+library(DataExplorer)
+theme_set(theme_light())
+
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+
+tt <- tt_load("2021-06-15")
+
+```
+
+
+# Readme
+
+Take a look at the readme for the weekly data to get insight on the dataset.
+This includes a data dictionary, source, and a link to an article on the data.
+
+```{r Readme, eval = interactive()}
+
+tweets <- tt$tweets
+```
+
+## EDA
+
+```{r}
+tweets %>% 
+    skimr::skim()
+```
+
+```{r}
+tweets %>% 
+    plot_intro()
+```
+
+```{r}
+tweets %>% 
+    plot_missing()
+```
+
+## Which user tweeted the most?
+
+```{r}
+tweets %>% 
+    count(username, sort = TRUE) %>% 
+    slice_max(n, n = 10) %>% 
+    mutate(username = fct_reorder(username, n)) %>%
+    ggplot(aes(n, username)) +
+    geom_col() +
+    geom_text(aes(label = n), hjust = -0.1) +
+    labs(x = "# of tweets",
+         y = "",
+         title = "Top 10 most tweeted users")
+```
+
+## Top users' stats by arranged by median followers
+```{r}
+tweets %>% 
+    group_by(username) %>% 
+    summarize(median_retweet = median(retweet_count),
+              median_like = median(like_count),
+              median_quote = median(quote_count),
+              median_followers = median(followers)) %>% 
+    arrange(desc(median_followers))
+```
+
+
+## Top users' stats by arranged by median retweet
+```{r}
+tweets %>% 
+    group_by(username) %>% 
+    summarize(median_retweet = median(retweet_count),
+              median_like = median(like_count),
+              median_quote = median(quote_count),
+              median_followers = median(followers)) %>% 
+    arrange(desc(median_retweet))
+```
+
+## Top users' stats by arranged by median like
+```{r}
+tweets %>% 
+    group_by(username) %>% 
+    summarize(median_retweet = median(retweet_count),
+              median_like = median(like_count),
+              median_quote = median(quote_count),
+              median_followers = median(followers)) %>% 
+    arrange(desc(median_like))
+```
+
+## Top users' stats by arranged by median quote
+```{r}
+tweets %>% 
+    group_by(username) %>% 
+    summarize(median_retweet = median(retweet_count),
+              median_like = median(like_count),
+              median_quote = median(quote_count),
+              median_followers = median(followers)) %>% 
+    arrange(desc(median_quote))
+```
+
+- User with the highest median retweet count also has the highest median like and median quote.
+
+## Who and which tweet has the highest retweet
+
+```{r}
+tweets %>% 
+    slice_max(retweet_count, n = 1) %>% 
+    select(retweet_count, content, username) 
+```
+
+## Who and which tweet has the highest like
+
+```{r}
+tweets %>% 
+    slice_max(like_count, n = 1) %>% 
+    select(like_count, content, username) 
+```
+
+## Who and which tweet has the highest quote
+
+```{r}
+tweets %>% 
+    slice_max(quote_count, n = 1) %>% 
+    select(quote_count, content, username)
+```
+
+- User **CharlieEatonPhD** has the highest retweet, like, and quote count.
+
+## Question: What factors influence the retweet count?
+### Does the user matter?
+
+```{r}
+tweets %>% 
+    filter(!is.na(username)) %>% 
+    mutate(username = fct_lump(username, n = 9),
+           username = fct_reorder(username, retweet_count)) %>% 
+    ggplot(aes(retweet_count + 1, username)) +
+    geom_boxplot(aes(fill = username), alpha = 0.5)+
+    scale_x_log10() +
+    labs(x = "Retweet count (logged)",
+         y = "",
+         title = "Retweet count by most prevalent users") +
+    theme(legend.position = "none")
+```
+- It seems that retweet count is associated with different users
+
+### How about like and quote counts as well as followers and locations in terms of longitude and latitude
+
+```{r}
+tweets %>% 
+    na.omit() %>% 
+    plot_correlation(type = "continuous")
+```
+- It is clear that like and quote counts are extremely strong predictors of retweet count, while the variable `followers` has a positively weak correlation with retweet count. The locations seem not to matter much given the correlations for longitude and latitude with retweet count are very weak and negative.
+
+### Visualize the relationship between retweet count and location
+
+```{r}
+library(leaflet)
+
+pal <- colorFactor(palette = "RdBu",
+                    domain = tweets$retweet_dummy)
+tweets_map <- tweets %>% 
+    mutate(popup_label = paste(paste0("<b>Location: ", "</b>",
+                                      location),
+                               paste0("<b>Retweet Count: ", "</b>",
+                                      retweet_count),
+                               sep = "<br/>"),
+           retweet_dummy = if_else(retweet_count > 10, "High", "Low")) %>% 
+    na.omit()
+
+leaflet() %>% 
+    addProviderTiles("Stamen.TonerLite") %>% 
+    addCircleMarkers(data = tweets_map,
+                     radius = 10,
+                     stroke = FALSE,
+                     fillOpacity = 0.7,
+                     popup = ~popup_label,
+                     fillColor = ~pal(retweet_dummy)) %>% 
+    addLegend(data = tweets_map,
+              position = "topright",
+              values = ~retweet_dummy,
+              title = "Retweet Count",
+              pal = pal)
+```
+
+### Does datetime matter?
+
+```{r}
+# Look at the retweet count by each day
+library(lubridate)
+tweets %>% 
+    mutate(date = date(datetime)) %>% 
+    group_by(date) %>% 
+    summarize(retweet_day = median(retweet_count)) %>% 
+    ungroup() %>% 
+    ggplot(aes(date, retweet_day)) +
+    geom_line() +
+    geom_smooth(method = "lm") +
+    labs(x = "Date",
+         y = "# of retweets (median)",
+         title = "Median # of retweets by day",
+         subtitle = "Feb, 2021 - May, 2021")
+```
+
+- It does not seem to have a linear relationship between the time of the tweets and retweet count.
+
+```{r}
+# Look at the retweet count by each week
+tweets %>% 
+    mutate(week = week(datetime)) %>% 
+    group_by(week) %>% 
+    summarize(retweet_week = median(retweet_count)) %>% 
+    ungroup() %>% 
+    ggplot(aes(week, retweet_week)) +
+    geom_line() +
+    geom_smooth(method = "lm") +
+    labs(x = "Week",
+         y = "# of retweets (median)",
+         title = "Median # of retweets by week",
+         subtitle = "Feb, 2021 - May, 2021")
+```
+
+- A negative association seems to exist when we organize the `datetime` by week. The median of retweet dropped in recently weeks from about 1.3 per week to less than 1 per week.
+
+
+## Model
+### Train, test, and validation sets
+
+```{r}
+library(tidymodels)
+set.seed(121)
+tweets_split <- initial_split(tweets)
+tweets_train <- training(tweets_split)
+tweets_test <- testing(tweets_split)
+tweets_fold <- vfold_cv(tweets_train, v = 10)
+```
+
+### Feature engineering
+
+```{r}
+library(textrecipes)
+tweets_rec <- tweets_train %>% 
+    recipe(retweet_count ~ like_count + quote_count + followers + content
+           + username) %>% 
+    step_log(all_numeric_predictors(), all_outcomes(), base = 10,
+             offset = 1) %>% 
+    step_other(username, threshold = 5) %>% 
+    step_dummy(username, one_hot = TRUE) %>% 
+    step_tokenize(content, token = "tweets") %>% 
+    step_stopwords(content, stopword_source = "stopwords-iso") %>% 
+    step_tokenfilter(content, max_tokens = 10) %>% 
+    step_tfidf(content) 
+
+tweets_rec %>% 
+    prep() %>% 
+    juice() %>% View()
+```
+
