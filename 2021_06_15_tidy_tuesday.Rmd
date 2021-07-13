@@ -21,12 +21,12 @@ library(scales)
 library(tidytuesdayR)
 library(DataExplorer)
 theme_set(theme_light())
-
+doParallel::registerDoParallel(cores = 8)
 ```
 
 # Load the weekly Data
 
-Dowload the weekly data and make available in the `tt` object.
+Download the weekly data and make available in the `tt` object.
 
 ```{r Load}
 
@@ -42,7 +42,13 @@ This includes a data dictionary, source, and a link to an article on the data.
 
 ```{r Readme, eval = interactive()}
 
-tweets <- tt$tweets
+tweets <- tt$tweets %>% 
+    filter(!is.na(content),
+           !is.na(retweet_count),
+           !is.na(followers),
+           !is.na(quote_count),
+           !is.na(like_count),
+           !is.na(username))
 ```
 
 ## EDA
@@ -122,7 +128,8 @@ tweets %>%
     arrange(desc(median_quote))
 ```
 
-- User with the highest median retweet count also has the highest median like and median quote.
+- User with the highest median retweet count also has the highest median like and median quote,
+whose username is ijeamaka_a.
 
 ## Who and which tweet has the highest retweet
 
@@ -156,7 +163,7 @@ tweets %>%
 ```{r}
 tweets %>% 
     filter(!is.na(username)) %>% 
-    mutate(username = fct_lump(username, n = 9),
+    mutate(username = fct_lump(username, n = 19),
            username = fct_reorder(username, retweet_count)) %>% 
     ggplot(aes(retweet_count + 1, username)) +
     geom_boxplot(aes(fill = username), alpha = 0.5)+
@@ -175,7 +182,7 @@ tweets %>%
     na.omit() %>% 
     plot_correlation(type = "continuous")
 ```
-- It is clear that like and quote counts are extremely strong predictors of retweet count, while the variable `followers` has a positively weak correlation with retweet count. The locations seem not to matter much given the correlations for longitude and latitude with retweet count are very weak and negative.
+- It is clear that like and quote counts are extremely strong predictors of retweet count, while the variable `followers` has a positively weak correlation with retweet count. The locations seem not to matter much given the correlations for longitude and latitude with retweet count are close to 0.
 
 ### Visualize the relationship between retweet count and location
 
@@ -273,11 +280,173 @@ tweets_rec <- tweets_train %>%
     step_dummy(username, one_hot = TRUE) %>% 
     step_tokenize(content, token = "tweets") %>% 
     step_stopwords(content, stopword_source = "stopwords-iso") %>% 
-    step_tokenfilter(content, max_tokens = 10) %>% 
-    step_tfidf(content) 
+    step_tokenfilter(content, max_tokens = tune()) %>% 
+    step_tf(content)
+    
+```
 
-tweets_rec %>% 
-    prep() %>% 
-    juice() %>% View()
+### xgboost model
+
+```{r}
+tweets_mod_xg <- boost_tree(mtry = tune(),
+                            trees = tune(),
+                            min_n = tune(),
+                            tree_depth = tune(),
+                            learn_rate = tune(),
+                            loss_reduction = tune(),
+                            sample_size = tune()) %>% 
+    set_engine("xgboost") %>% 
+    set_mode("regression")
+```
+
+### xgboost workflow
+```{r}
+tweets_wf_xg <- workflow() %>% 
+    add_recipe(tweets_rec) %>% 
+    add_model(tweets_mod_xg)
+```
+
+### Tuning xgboost model with grid_latin_hypercube
+
+```{r}
+xg_grid <- grid_latin_hypercube(
+    finalize(mtry(), tweets_train),
+    trees(),
+    min_n(),
+    tree_depth(),
+    learn_rate(),
+    loss_reduction(),
+    sample_size = sample_prop(),
+    max_tokens(),
+    size = 100
+)
+```
+
+```{r}
+set.seed(121)
+tweets_xg_res <- tune_grid(
+    tweets_wf_xg,
+    resamples = tweets_fold,
+    grid = xg_grid,
+    control = control_grid(save_pred = TRUE,
+                           save_workflow = TRUE)
+)
+
+autoplot(tweets_xg_res)
+```
+
+```{r}
+show_best(tweets_xg_res, "rmse") %>% 
+    relocate(.metric, mean)
+final_xg <- finalize_workflow(
+    tweets_wf_xg,
+    select_best(tweets_xg_res, "rmse")
+)
+```
+
+- The best rmse is 0.199 for the training set.
+
+### Important variables
+```{r}
+library(vip)
+final_xg %>% 
+    fit(data = tweets_train) %>% 
+    pull_workflow_fit() %>% 
+    vip(geom = "col")
+```
+
+### Fitting on the test set
+
+```{r}
+final_res <- last_fit(final_xg, tweets_split)
+
+final_res %>% 
+    collect_metrics()
+```
+
+- The best rmse is 0.198 for the test set.
+
+### How well did the model tuned by latin_hypercube do?
+
+```{r}
+collect_predictions(final_res) %>% 
+    ggplot(aes(exp(retweet_count), exp(.pred))) +
+    geom_point(alpha = 0.6, color = "midnightblue") +
+    geom_abline(lty = 2, color = "red") +
+    coord_obs_pred() +
+    labs(x = "# of retweets (observed)",
+         y = "# of retweet (predicted)")
+```
+
+### Tuning with crossing (regular_grid)
+
+```{r}
+
+tweets_xg_spec <- boost_tree(
+                             mtry = tune(),
+                             trees = tune(),
+                             learn_rate = 0.01) %>% 
+    set_engine("xgboost") %>% 
+    set_mode("regression")
+
+tweets_wf_xg <- workflow() %>% 
+     add_recipe(tweets_rec) %>% 
+     add_model(tweets_xg_spec)
+
+set.seed(2021)
+tweets_xg_rs_crossing <- tweets_wf_xg %>% 
+     tune_grid(tweets_fold,
+              grid = crossing(mtry = seq(10, 50, 10),
+                              trees = seq(100, 1000, 100),
+                              max_tokens = seq(10, 100, 10)),
+              control = control_grid(
+                                     save_pred = TRUE,
+                                     save_workflow = TRUE))
+autoplot(tweets_xg_rs_crossing)
+```
+
+### Explore results
+
+```{r}
+show_best(tweets_xg_rs_crossing, "rmse")
+show_best(tweets_xg_rs_crossing, "rsq")
+```
+
+- The best rmse for training data tuned by crossing is 0.19.
+
+```{r}
+final_xg_crossing <- 
+    finalize_workflow(tweets_wf_xg,
+                      select_best(tweets_xg_rs_crossing, "rmse"))
+```
+
+### Fitting on test data
+
+```{r}
+final_res_crossing <- last_fit(final_xg_crossing, tweets_split)
+final_res_crossing %>% 
+    collect_metrics()
+```
+
+- The best rmse for testing data tuned by crossing is 0.201.
+
+```{r}
+final_xg_crossing %>% 
+    fit(data = tweets_train) %>% 
+    pull_workflow_fit() %>% 
+    vip(geom = "col")
+```
+
+
+### How well did the model tuned by crossing do?
+
+```{r}
+collect_predictions(final_res_crossing) %>% 
+    ggplot(aes(exp(retweet_count), exp(.pred))) +
+    geom_point(alpha = 0.6, color = "midnightblue") +
+    geom_abline(lty = 2, color = "red") +
+    coord_obs_pred() +
+    labs(x = "# of retweets (observed)",
+         y = "# of retweet (predicted)")
 ```
 
