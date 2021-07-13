@@ -158,6 +158,23 @@ tweets %>%
 - User **CharlieEatonPhD** has the highest retweet, like, and quote count.
 
 ## Question: What factors influence the retweet count?
+### Distribution of retweet count
+
+```{r}
+tweets %>% 
+    ggplot(aes(retweet_count)) +
+    geom_histogram(binwidth = 1)
+```
+
+
+```{r}
+tweets %>% 
+    ggplot(aes(retweet_count)) +
+    geom_histogram() +
+    scale_x_log10()
+```
+
+
 ### Does the user matter?
 
 ```{r}
@@ -261,7 +278,7 @@ tweets %>%
 ```{r}
 library(tidymodels)
 set.seed(121)
-tweets_split <- initial_split(tweets)
+tweets_split <- initial_split(tweets, strata = retweet_count)
 tweets_train <- training(tweets_split)
 tweets_test <- testing(tweets_split)
 tweets_fold <- vfold_cv(tweets_train, v = 10)
