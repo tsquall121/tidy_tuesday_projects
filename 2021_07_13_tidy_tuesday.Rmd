@@ -1,7 +1,9 @@
 ---
 title: "TidyTemplate"
 date: 2021-07-14
-output: html_output
+output: 
+    html_document:
+    toc: TRUE
 ---
 
 # TidyTuesday
