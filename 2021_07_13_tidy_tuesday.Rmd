@@ -1,0 +1,812 @@
+---
+title: "TidyTemplate"
+date: 2021-07-14
+output: html_output
+---
+
+# TidyTuesday
+
+Join the R4DS Online Learning Community in the weekly \#TidyTuesday event! Every week we post a raw dataset, a chart or article related to that dataset, and ask you to explore the data. While the dataset will be "tamed", it will not always be tidy! As such you might need to apply various R for Data Science techniques to wrangle the data into a true tidy format. The goal of TidyTuesday is to apply your R skills, get feedback, explore other's work, and connect with the greater \#RStats community! As such we encourage everyone of all skills to participate!
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(scales)
+library(DataExplorer)
+library(GGally)
+theme_set(theme_light())
+doParallel::registerDoParallel(cores = 8)
+```
+
+# Load the weekly Data
+
+Dowload the weekly data and make available in the `tt` object.
+
+```{r Load}
+# Solve the NULL as NA issue in the original data by adding na = argument
+scoobydoo <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-07-13/scoobydoo.csv', na = c("", "NA", "NULL")) %>% 
+    mutate(number_of_snacks = parse_number(number_of_snacks)) %>%
+    filter(
+           index != 293,
+           index != 313,
+           index != 393,
+           index != 394,
+           index != 404,
+           index != 408,
+           index != 410,
+           index != 411,
+           index != 417,
+           index != 576)
+    # # problem with monster_name column (6 categories) while other columns containing "monster_" 
+    # has only 5 categories, which makes the use of seperate_rows problematic
+
+scoobydoo[60, 11] <- "Mamba Wamba,Zombie Lila,Mamba Zombie" # fix extra "," in index 60 monster_name
+scoobydoo[84, 12] <- "Female,Male" # fix extra "," in index 60 monster_gender
+scoobydoo[28, 47] <- "House Keeping Couple,House Keeping Couple" # fix index 28 culprit_name only one "House Keeping Couple"
+scoobydoo <- scoobydoo %>% 
+    mutate(culprit_name = if_else(index == 602, "Waitress,Cook,Janitor",
+                                  culprit_name))# fix index 602 culprit_name "." instead of "," before Janitor
+```
+
+```{r}
+mn_sep <- scoobydoo %>%
+    separate_rows(monster_name, sep = ",")
+
+mg_sep <- scoobydoo %>%
+    separate_rows(monster_gender, sep = ",")
+
+mt_sep <- scoobydoo %>%
+    separate_rows(monster_type, sep = ",")
+
+mst_sep <- scoobydoo %>%
+    separate_rows(monster_subtype, sep = ",")
+
+ms_sep <- scoobydoo %>%
+    separate_rows(monster_species, sep = ",")
+
+cn_sep <- scoobydoo %>%
+    separate_rows(culprit_name, sep = ",")
+
+cg_sep <- scoobydoo %>% 
+    separate_rows(culprit_gender, sep = ",")
+```
+
+
+```{r}
+mn_sep %>% select(index, monster_name, monster_gender) %>% mutate(id = row_number()) 
+mg_sep %>% select(index, monster_name, monster_gender) %>% mutate(id = row_number()) 
+
+mn_sep %>% select(index, monster_name, monster_gender) %>% mutate(id = row_number()) %>% 
+    anti_join(mg_sep %>% select(index, monster_name, monster_gender) %>% 
+                  mutate(id = row_number()),
+              by = "id")
+
+# index 293 monster_gender should have 6 Males instead of 5 given that there are six monster names for index 293
+
+# index 84 monster_gender has an extra ","
+# index 393 monster_name has more categories than others
+#index 394 monster_name has less categories than others
+# index 404 monster_name has more categories than others
+# index 417 monster_name has more categories than others
+```
+
+
+```{r}
+mn_sep %>% select(index, monster_name, monster_type) %>% mutate(id = row_number()) 
+mt_sep %>% select(index, monster_name, monster_type) %>% mutate(id = row_number()) 
+
+mn_sep %>% select(index, monster_name, monster_type) %>% mutate(id = row_number()) %>% 
+    anti_join(mt_sep %>% select(index, monster_name, monster_type) %>% 
+                  mutate(id = row_number()),
+              by = "id")
+# index 60 monster_name has an extra "," in the end.
+# index 313 monster_name has only 17 categories while others have more categories.
+# index 408 monster_name has less categories 
+# index 576 monster_name has less categories
+```
+
+```{r}
+mn_sep %>% select(index, monster_name, monster_species) %>% mutate(id = row_number()) 
+ms_sep %>% select(index, monster_name, monster_species) %>% mutate(id = row_number())
+
+mn_sep %>% select(index, monster_name, monster_species) %>% mutate(id = row_number()) %>% 
+    anti_join(mt_sep %>% select(index, monster_name, monster_species) %>% 
+                  mutate(id = row_number()),
+              by = "id")
+
+# index 410 monster_name has less categories 
+# index 411 monster_name has more categories 
+```
+
+
+
+## Cleaned data
+```{r}
+scoobydoo <- scoobydoo %>% 
+    separate_rows(monster_name:monster_species,
+                  sep = ",")
+```
+
+## EDA
+
+```{r}
+scoobydoo %>% 
+    skimr::skim()
+```
+
+## Correlation of all numeric variables
+
+```{r}
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    na.omit() %>% 
+    plot_correlation()
+```
+
+* imdb is primarily associated with `engagement`, `run_time`, `monster_amount`, `suspects_amount`, `jinkies`, `my_glasses`and `rooby_rooby_roo`.
+
+## Visualize scatterplots between imdb and all numeric variables
+```{r}
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    relocate(imdb, .after = rooby_rooby_roo) %>% 
+    ggpairs(c(1:8, 18)) # look at the first 8 variables
+```
+
+* `engagement`, `run_time`, `monster_amount` are potential predictors of imdb
+(`suspects_amount` is highly correlated with `run_time` and is not important in
+this case)
+
+```{r}
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    relocate(imdb, .after = rooby_rooby_roo) %>% 
+    ggpairs(10:18) # look at the last 8 variables
+```
+* `jinkies`, `my_glasses`, and `rooby_rooby_roo` are potential predictors of imdb
+
+### Examine important numeric variables carefully
+
+```{r}
+# Write a function to construct scatterplot between imdb and other numeric
+#variables
+plot_scatter <- function (tbl, variable){
+    tbl %>% 
+        ggplot(aes({{ variable }}, imdb)) +
+        geom_point() +
+        geom_smooth(method = "lm", color = "red") +
+        geom_smooth(method = "loess") 
+}
+
+# engagement
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    plot_scatter(engagement) +
+    scale_x_log10() # engagement seems to have a quadratic effect on imdb score
+
+# run_time
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    plot_scatter(run_time) # the longer the run time, the lowerer the imdb score
+
+# monster_amount
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    plot_scatter(monster_amount) # imdb score seems to decrease when monster amount increases
+
+# jinkies
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    plot_scatter(jinkies) # imdb score seems to decrease when jinkies increases
+
+# my_glasses
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    plot_scatter(my_glasses) # imdb score seems to decrease when my_glasses increases
+
+# rooby_rooby_doo
+scoobydoo %>% 
+    select_if(is.numeric) %>% 
+    select(-index) %>% 
+    plot_scatter(rooby_rooby_roo) # imdb score seems to decrease when rooby increases
+```
+
+## Relationships between imdb and all logical variables
+
+```{r}
+# Density plots
+scoobydoo %>% 
+    select_if(is.logical) %>% 
+    bind_cols(scoobydoo[6]) %>% 
+    relocate(imdb) %>% 
+    pivot_longer(monster_real:blue_falcon,
+                 names_to = "variable",
+                 values_to = "value") %>% 
+    na.omit() %>% 
+    ggplot(aes(imdb, color = value)) +
+    geom_density() +
+    facet_wrap(~variable, scales = "free", ncol = 5) +
+    theme(legend.position = "bottom") +
+    labs(x = "imdb scores",
+         y = "Density",
+         color = "Status",
+         title = "Distribution of imdb scores",
+         subtitle = "Breakdown by status change (TRUE or FALSE) in different characteristics")
+```
+
+* Based on the density plot, most status change don't have impact on imdb scores.
+However, `blue_falcon`, `caught_not`, and `snack_shaggy` seem to matter.
+
+```{r}
+# boxplots
+scoobydoo %>% 
+    select_if(is.logical) %>% 
+    bind_cols(scoobydoo[6]) %>% 
+    relocate(imdb) %>% 
+    pivot_longer(monster_real:blue_falcon,
+                 names_to = "variable",
+                 values_to = "value") %>% 
+    na.omit() %>% 
+    ggplot(aes(imdb, value, fill = value)) +
+    geom_boxplot(alpha = 0.6) +
+    facet_wrap(~variable, scales = "free", ncol = 5) +
+    theme(legend.position = "bottom") +
+    labs(x = "imdb scores",
+         fill = "Status",
+         title = "Distribution of imdb scores",
+         subtitle = "Breakdown by status change (TRUE or FALSE) in different characteristics")
+```
+
+* `monster_real` seems to matter as well.
+
+## Relationships between imdb and all character variables
+
+```{r}
+# Find the number of unique categories in each character variable
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    map_df(~ count(data.frame(x = .), x, sort = TRUE), .id = "variable_name") %>% 
+    as_tibble() %>% 
+    group_by(variable_name) %>% 
+    summarize(unique_categories = n()) %>% 
+    arrange(desc(unique_categories)) %>% 
+    print(n = Inf)
+```
+
+
+
+```{r}
+# Or achieve it through the following way
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    map_dbl(~ length(unique(.x)))
+```
+
+```{r}
+# Count of unique categories for each variable
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    map_df(~ count(data.frame(x = .), x, sort = TRUE), .id = "variable_name") %>% 
+    as_tibble() %>% 
+    split(.$variable_name)
+```
+
+
+```{r}
+
+plot_col <- function (tbl, variable){
+    if (is.character(pull(tbl, {{ variable }}))) {
+        tbl <- tbl %>% 
+        mutate({{ variable }} := fct_lump({{ variable }}, 10),
+               {{ variable }} := fct_reorder({{ variable }}, imdb))
+    }
+    tbl %>% 
+        ggplot(aes(imdb, {{ variable }})) +
+        geom_col()
+}
+
+# series_name
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(series_name) # seem to have effect
+
+# network
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(network) # seem to matter
+
+# season
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(season) # seem to matter
+
+# title
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(title) # doesn't matter
+
+# format
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(format) # seem to matter
+
+# monster_name
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(monster_name) # doesn't matter
+
+# monster_gender
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(monster_gender) # matters a lot
+
+# monster_type
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(monster_type) # seem to matter
+
+# monster_subtype
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(monster_subtype) # doesn't matter much
+
+# monster_species
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(monster_species) # human vs. others matter
+
+# setting_terrain
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(setting_terrain) # urban, rural, vs. others
+
+# setting_country_state
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(setting_country_state) # United States, California, vs. others.
+
+# culprit_name
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(culprit_name) # doesn't matter
+
+# culprit_gender
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(culprit_gender) # probably doesn't matter much and alos it's messed up
+
+# motive
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(motive) # matters
+
+# if_it_wasnt_for
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(if_it_wasnt_for) # doesn't matter
+
+# and_that
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(and_that) # doesn't matter
+
+# fred_va
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(fred_va) # Frank Welker vs. others
+
+# daphnie_va
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(daphnie_va) # Grey DeLisle or Heather North vs. others
+
+# velma_va
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(velma_va) # Mindy Cohn vs. others
+
+# shaggy_va
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(shaggy_va) # Casey kasem vs. others
+
+# scooby_va
+scoobydoo %>% 
+    select_if(is.character) %>% 
+    bind_cols(scoobydoo %>% select(imdb)) %>% 
+    relocate(imdb) %>% 
+    plot_col(scooby_va) # Don Messick or Frank Welker vs. others
+```
+
+`and_that`, `if_it_wasnt_for`, `culprit_gender`, `culprit_name`, `monster_subtype`, `monster_name`,
+`title` will be excluded from the model due to no/lower impacts on imdb score.
+
+### Does the time matter?
+
+```{r}
+scoobydoo %>% 
+    ggplot(aes(date_aired, imdb, color = season)) +
+    geom_line() +
+    facet_wrap(~season) +
+    labs(x = "Aired date",
+         y = "imdb score",
+         title = "imdb score over time",
+         subtitle = "Breakdown by seasons",
+         color = "Season") +
+    theme(legend.position = "bottom")
+```
+
+Overall, it looks like some random noise between aired date and imdb score.
+
+```{r}
+# use decade instead of date
+library(lubridate)
+scoobydoo %>% 
+    ggplot(aes(10*(year(date_aired) %/%10), imdb)) +
+    geom_line() +
+    geom_smooth(method = "loess") +
+    labs(x = "Aired date by decade",
+         y = "imdb score",
+         title = "imdb score over decades") 
+```
+
+When switch to decade, it seems that there is a nonlinear relationship between imbd score and aired decade.
+
+
+
+## Modelling
+
+### Train, test, and validation sets
+
+```{r}
+set.seed(121)
+library(tidymodels)
+
+
+scoobydoo_model <- scoobydoo %>% 
+    select(index, imdb, engagement, run_time, monster_amount, jinkies, my_glasses, rooby_rooby_roo, blue_falcon, caught_not, snack_shaggy, monster_real, series_name:season, format, monster_gender, monster_type, monster_species, setting_terrain, setting_country_state, motive, fred_va:scooby_va, date_aired) %>% 
+    mutate_if(is.character, as.factor)
+
+scoobydoo_split <- initial_split(scoobydoo_model, strata = imdb)
+scoobydoo_train <- training(scoobydoo_split)
+scoobydoo_test <- testing(scoobydoo_split)
+
+set.seed(123)
+scoobydoo_fold <- vfold_cv(scoobydoo_train, v = 10)
+```
+
+
+### Feature engineering
+
+```{r}
+scoobydoo_rec <- recipe(imdb ~ ., data = scoobydoo_train) %>% 
+    update_role(index, new_role = "id") %>% 
+    step_mutate(date_aired = 10 * (year(date_aired) %/% 10),
+                monster_real = factor(monster_real),
+                snack_shaggy = factor(snack_shaggy)) %>% 
+    step_other(all_nominal_predictors(), threshold = 0.1) %>% 
+    step_impute_median(all_numeric_predictors(), all_outcomes()) %>% 
+    step_impute_mode(all_nominal_predictors()) %>% 
+    step_log(engagement, base = 10, offset = 1) %>% 
+    step_unknown(snack_shaggy, new_level = "unknown") %>%
+    step_unknown(monster_real, new_level = "unknown") %>%# since snack_shaggy and monster_real still have missing values even after imputation, I set the missing value as unknown.
+    step_dummy(all_nominal_predictors()) %>% 
+    step_ns(engagement, deg_free = tune("engagement df")) %>% 
+    step_ns(run_time, deg_free =  tune("run_time df")) %>% 
+    step_ns(date_aired, deg_free = tune("date_aired df"))
+
+```
+
+### linear model
+
+```{r}
+# model
+scoobydoo_linear_model <- linear_reg() %>% 
+    set_engine("lm") %>% 
+    set_mode("regression")
+```
+
+```{r}
+# workflow
+scoobydoo_linear_wf <- workflow() %>% 
+    add_recipe(scoobydoo_rec) %>% 
+    add_model(scoobydoo_linear_model)
+```
+
+### Tuning linear model
+
+```{r}
+set.seed(2021)
+
+scoobydoo_param <- scoobydoo_linear_wf %>% 
+    parameters()
+
+scoobydoo_linear_res <- scoobydoo_linear_wf %>% 
+    tune_grid(scoobydoo_fold,
+              grid = grid_regular(scoobydoo_param, levels = 5))
+
+autoplot(scoobydoo_linear_res)
+
+scoobydoo_linear_res %>% 
+    collect_metrics() %>% 
+    arrange(mean)
+```
+
+* The result clearly show that adding splines to date_aired variable is not helpful, while spline effects do exist for engagement and run_time at 15. Thus, we can update the recipe to train an xgboost model.
+
+### xgboost model
+
+#### update recipe for xgboost model
+
+```{r}
+scoobydoo_rec_xg <- recipe(imdb ~ ., data = scoobydoo_train) %>% 
+    update_role(index, new_role = "id") %>% 
+    step_mutate(date_aired = 10 * (year(date_aired) %/% 10),
+                monster_real = factor(monster_real),
+                snack_shaggy = factor(snack_shaggy)) %>% 
+    step_other(all_nominal_predictors(), threshold = 0.1) %>% 
+    step_impute_median(all_numeric_predictors(), all_outcomes()) %>% 
+    step_impute_mode(all_nominal_predictors()) %>% 
+    step_log(engagement, base = 10, offset = 1) %>% 
+    step_unknown(snack_shaggy, new_level = "unknown") %>%
+    step_unknown(monster_real, new_level = "unknown") %>%# since snack_shaggy and monster_real still have missing values even after imputation, I set the missing value as unknown.
+    step_dummy(all_nominal_predictors()) %>% 
+    step_ns(engagement, deg_free = 15) %>% 
+    step_ns(run_time, deg_free =  15)
+
+scoobydoo_rec_xg %>% 
+    prep() %>% 
+    juice()
+```
+
+```{r}
+scoobydoo_spec_xg <- boost_tree(mtry = tune(),
+                                trees = tune(),
+                                tree_depth = tune(),
+                                learn_rate = tune()) %>% 
+    set_engine("xgboost") %>% 
+    set_mode("regression")
+
+scoobydoo_xg_wf <- workflow() %>% 
+    add_recipe(scoobydoo_rec_xg) %>% 
+    add_model(scoobydoo_spec_xg)
+```
+
+
+### Tuning xgboost model
+
+```{r}
+
+# use latin_hypercude
+
+set.seed(007)
+
+scoobydoo_xg_res <- scoobydoo_xg_wf %>% 
+    tune_grid(scoobydoo_fold,
+              grid = grid_latin_hypercube(finalize(mtry(), scoobydoo_train),
+                                  trees(), tree_depth(),
+                                  learn_rate(), size = 100))
+
+autoplot(scoobydoo_xg_res)
+
+scoobydoo_xg_res %>% 
+    collect_metrics() %>% 
+    arrange(mean)
+```
+
+* Not the best result
+
+```{r}
+# using crossing
+set.seed(2021)
+scoobydoo_xg_res <- scoobydoo_xg_wf %>% 
+    tune_grid(scoobydoo_fold,
+              grid = crossing(mtry = seq(10, 35, 5),
+                              trees = seq(300, 1000, 100),
+                              tree_depth = seq(5, 15, 5),
+                              learn_rate = c(0.01, 0.02)),
+              control = control_grid(save_pred = TRUE,
+                                     save_workflow = TRUE))
+
+autoplot(scoobydoo_xg_res)
+
+scoobydoo_xg_res %>% 
+    collect_metrics() %>% 
+    arrange(mean)
+```
+
+### Explore results
+
+```{r}
+show_best(scoobydoo_xg_res, "rmse")
+show_best(scoobydoo_xg_res, "rsq")
+```
+
+* The best rmse for training data tuned by xgboost model is `show_best(scoobydoo_xg_res, "rmse")`.
+
+### Finalize xgboost workflow
+```{r}
+final_xg_wf <- finalize_workflow(scoobydoo_xg_wf,
+                      select_best(scoobydoo_xg_res, "rmse"))
+```
+
+
+### Important variables
+```{r}
+library(vip)
+final_xg_wf %>% 
+    fit(data = scoobydoo_train) %>% 
+    pull_workflow_fit() %>% 
+    vip(geom = "col")
+```
+
+### Fitting on test data
+
+```{r}
+final_xg_res <- last_fit(final_xg_wf, scoobydoo_split)
+final_xg_res %>% 
+    collect_metrics()
+```
+
+* The best rmse for testing data tuned by xgboost model is `show_best(final_xg_res, "rmse")`.
+
+### How well did the xgboost model do?
+
+```{r}
+collect_predictions(final_xg_res) %>% 
+    ggplot(aes(imdb, .pred)) +
+    geom_point(alpha = 0.6, color = "midnightblue") +
+    geom_abline(lty = 2, color = "red") +
+    coord_obs_pred() +
+    labs(x = "imdb score (observed)",
+         y = "imdb score (predicted)")
+```
+
+Let's try a simpler model
+
+```{r}
+
+scoobydoo_rec_basic <- recipe(imdb ~ ., data = scoobydoo_train) %>% 
+    update_role(index, new_role = "id") %>% 
+    step_mutate(date_aired = 10 * (year(date_aired) %/% 10),
+                monster_real = factor(monster_real),
+                snack_shaggy = factor(snack_shaggy)) %>% 
+    step_other(all_nominal_predictors(), threshold = 0.1) %>% 
+    step_impute_median(all_numeric_predictors(), all_outcomes()) %>% 
+    step_impute_mode(all_nominal_predictors()) %>% 
+    step_log(engagement, base = 10, offset = 1) %>% 
+    step_unknown(snack_shaggy, new_level = "unknown") %>%
+    step_unknown(monster_real, new_level = "unknown") %>% # since snack_shaggy and monster_real still have missing values even after imputation, I set the missing value as unknown.
+    step_dummy(all_nominal_predictors())
+
+scoobydoo_rec_basic %>% 
+    prep() %>% 
+    juice()
+```
+
+
+```{r}
+
+scoobydoo_xg_wf_basic <- workflow() %>% 
+    add_recipe(scoobydoo_rec_basic) %>% 
+    add_model(scoobydoo_spec_xg)
+```
+
+```{r}
+set.seed(2021)
+scoobydoo_xg_res_basic <- scoobydoo_xg_wf_basic %>% 
+    tune_grid(scoobydoo_fold,
+              grid = crossing(mtry = seq(10, 35, 5),
+                              trees = seq(300, 1000, 100),
+                              tree_depth = seq(5, 15, 5),
+                              learn_rate = c(0.01, 0.02)),
+              control = control_grid(save_pred = TRUE,
+                                     save_workflow = TRUE))
+
+autoplot(scoobydoo_xg_res_basic)
+
+scoobydoo_xg_res_basic %>% 
+    collect_metrics() %>% 
+    arrange(mean)
+```
+
+### Explore results
+
+```{r}
+show_best(scoobydoo_xg_res_basic, "rmse")
+show_best(scoobydoo_xg_res_basic, "rsq")
+```
+
+* The best rmse for training data tuned by xgboost model is `show_best(scoobydoo_xg_res_basic, "rmse")`.
+
+### Finalize xgboost workflow
+```{r}
+final_xg_wf_basic <- finalize_workflow(scoobydoo_xg_wf_basic,
+                      select_best(scoobydoo_xg_res_basic, "rmse"))
+```
+
+
+### Important variables
+```{r}
+library(vip)
+final_xg_wf_basic %>% 
+    fit(data = scoobydoo_train) %>% 
+    pull_workflow_fit() %>% 
+    vip(geom = "col")
+```
+
+### Fitting on test data
+
+```{r}
+final_xg_res_basic <- last_fit(final_xg_wf_basic, scoobydoo_split)
+final_xg_res_basic %>% 
+    collect_metrics()
+```
+
+* The best rmse for testing data tuned by xgboost basic model is `show_best(final_xg_res_basic, "rmse")`.
+
+### How well did the xgboost basic model do?
+
+```{r}
+collect_predictions(final_xg_res_basic) %>% 
+    ggplot(aes(imdb, .pred)) +
+    geom_point(alpha = 0.6, color = "midnightblue") +
+    geom_abline(lty = 2, color = "red") +
+    coord_obs_pred() +
+    labs(x = "imdb score (observed)",
+         y = "imdb score (predicted)")
+```
+
+xgboost basic model performs better.
