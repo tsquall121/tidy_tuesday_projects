@@ -1,0 +1,372 @@
+---
+title: "2021_06_22_tidy_tuesday"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+theme_set(theme_light())
+```
+
+## Read data
+
+```{r}
+parks <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-22/parks.csv') %>% 
+    mutate(park_pct_city_data = parse_number(park_pct_city_data),
+           pct_near_park_data = parse_number(pct_near_park_data),
+           spend_per_resident_data = parse_number(spend_per_resident_data),
+           city = case_when(str_detect(city, "Washington, DC") ~ "Washington, D.C.",
+                            str_detect(city, "Charlotte.+") ~ "Charlotte",
+                            TRUE ~ city)) 
+```
+
+```{r}
+parks %>% skimr::skim()
+```
+
+
+## EDA: What factors contribute to the rank of city's park score?
+### How does the rank vary over time?
+
+```{r}
+parks %>% 
+    ggplot(aes(year, rank)) +
+    geom_line() +
+    facet_wrap(~city) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "",
+         y = "Park score rank",
+         title = "City's rank of park score from 2012 - 2020")
+```
+
+Most cities' rank of park socre vary over time.
+
+### What are the relatinoships between the "four metrics" and the rank of city's park score? 
+
+#### Park access and rank
+
+```{r}
+parks %>% 
+    ggplot(aes(pct_near_park_data/100, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm") +
+    scale_x_continuous(labels = percent) +
+    labs(x = "% of residents within a 10 minute walk to park",
+         y = "Park score rank",
+         title = "The relaitonship between park access and its rank")
+```
+
+* The higher the percentage, the higher the rank.
+
+```{r}
+parks %>% 
+    ggplot(aes(pct_near_park_data/100, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) +
+    facet_wrap(~city) +
+    scale_x_continuous(labels = percent) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "% of residents within a 10 minute walk to park",
+         y = "Park score rank",
+         title = "The relaitonship between park access and its rank")
+```
+
+* However, this relationship does not hold for most cities if we zoom in at the city level (only 11/100 cities still hold).
+
+
+#### Park acreage and rank
+
+##### Median park size and rank
+
+```{r}
+parks %>% 
+    ggplot(aes(med_park_size_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm") +
+    labs(x = "Median park size (acres)",
+         y = "Park score rank",
+         title = "The relaitonship between park acreage and its rank")
+```
+
+* When city's park increases in size, its rank tends to drop.
+
+```{r}
+parks %>% 
+    ggplot(aes(med_park_size_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) +
+    facet_wrap(~city) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "Median park size (acres)",
+         y = "Park score rank",
+         title = "The relaitonship between park acreage (park size) and its rank")
+```
+
+* However, this relationship does not hold for most cities if we zoom in at the city level (only 16/100 cities still hold).
+
+##### Parkland as percent of city area and rank
+
+```{r}
+parks %>% 
+    ggplot(aes(park_pct_city_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm") +
+    labs(x = "Parkland as % of city area",
+         y = "Park score rank",
+         title = "The relaitonship between park acreage (parkland) and its rank")
+```
+
+* When city's parkland area increases in size, its rank tends to rise.
+
+```{r}
+parks %>% 
+    ggplot(aes(med_park_size_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) +
+    facet_wrap(~city) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "Parkland as % of city area",
+         y = "Park score rank",
+         title = "The relaitonship between park acreage (parkland) and its rank")
+```
+
+* However, this relationship does not hold for most cities if we zoom in at the city level (only 17/100 cities still hold).
+
+#### Park investment and rank
+
+```{r}
+parks %>% 
+    ggplot(aes(spend_per_resident_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm") +
+    geom_smooth(method = "loess", color = "red") +
+    scale_x_continuous(labels = dollar) +
+    ylim(c(0, NA)) +
+    labs(x = "Park Spending per resident in USD",
+         y = "Park score rank",
+         title = "The relaitonship between park spending and its rank")
+```
+
+* When city increases investment in park, its rank tends to rise.
+
+```{r}
+parks %>% 
+    ggplot(aes(spend_per_resident_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) +
+    facet_wrap(~city) +
+    scale_x_continuous(labels = dollar) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "Park Spending per resident in USD",
+         y = "Park score rank",
+         title = "The relaitonship between park spending and its rank")
+```
+
+* However, this relationship does not hold for most cities if we zoom in at the city level (only 33/100 cities still hold).
+
+
+
+#### Park amenities and rank
+
+##### Basketball hoops and rank
+
+```{r}
+parks %>% 
+    ggplot(aes(basketball_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm") +
+    scale_x_log10() +
+    labs(x = "Basketball hoops per 10,000 residents",
+         y = "Park score rank",
+         title = "The relaitonship between park amenities (basketball hoops) and its rank")
+```
+
+* As basketball hoops increase in a city, its rank becomes higher
+
+```{r}
+parks %>% 
+    ggplot(aes(basketball_data, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) +
+    facet_wrap(~city) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "Basketball hoops per 10,000 residents",
+         y = "Park score rank",
+         title = "The relaitonship between park amenities (basketball hoops) and its rank")
+```
+
+* However, this relationship does not hold for most cities if we zoom in at the city level (only 20/100 cities still hold).
+
+#### Dog park, playgrounds, recreation & senior centers, restrooms, splashpads
+
+```{r}
+library(GGally)
+parks %>% 
+    ggpairs(columns = c(12, 14, 16, 18, 20, 22, 2))
+```
+* All amenities have a negative association with park rank. It seems that they are skewed to to the right. Thus, it is possible to apply a log transformation to make them distributed normally.
+
+```{r}
+parks %>% 
+    ggpairs(columns = c(12, 14, 16, 18, 20, 22, 2)) +
+    scale_x_log10()
+```
+
+Now, the negative associations are much clearer.
+
+
+### Does the number of park benches matter?
+
+```{r}
+parks %>% 
+    ggplot(aes(park_benches, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm") +
+    labs(x = "# of park benches",
+         y = "Park score rank",
+         title = "The relaitonship between park benches and its rank")
+```
+
+* As park benches increase in a city, its rank becomes higher
+
+```{r}
+parks %>% 
+    ggplot(aes(park_benches, rank)) +
+    geom_point() + 
+    geom_smooth(method = "lm", se = FALSE) +
+    facet_wrap(~city) +
+    theme(axis.text.x = element_text(angle = 65, vjust = 0.6)) +
+    labs(x = "# of park benches",
+         y = "Park score rank",
+         title = "The relaitonship between park benches and its rank")
+```
+
+35/100 city still hold this relationship true.
+
+
+## Modeling
+
+```{r}
+library(tidymodels)
+doParallel::registerDoParallel(cores = 8)
+set.seed(121)
+parks_split <- initial_split(parks, strata = rank)
+parks_train <- training(parks_split)
+parks_test <- testing(parks_split)
+
+set.seed(123)
+parks_fold <- vfold_cv(parks_train)
+```
+
+### Feature engineering
+
+```{r}
+parks_train %>% select(pct_near_park_data, med_park_size_data,
+                       park_pct_city_data,spend_per_resident_data,
+                       basketball_data, dogpark_data,playground_data,
+                       rec_sr_data, restroom_data,
+                       splashground_data,year, park_benches) %>% 
+    ggpairs() # visualize variables that need to be log-transformed
+```
+
+#### Basic recipe
+
+```{r}
+parks_rec <- recipe(rank ~ pct_near_park_data + med_park_size_data + park_pct_city_data+
+                        spend_per_resident_data + basketball_data + dogpark_data +
+                        playground_data + rec_sr_data + restroom_data +
+                        splashground_data + year + park_benches,
+                    data = parks_train) %>% 
+    step_impute_knn(all_predictors()) %>% 
+    step_log(med_park_size_data:restroom_data, base = 10, offset = 1)
+
+parks_rec %>% 
+    prep() %>% 
+    juice() 
+```
+
+#### Add pca and ns to steps
+
+```{r}
+parks_rec_pca <- parks_rec %>% 
+    step_normalize(basketball_data:splashground_data) %>% 
+    step_pca(basketball_data:splashground_data, num_comp = tune()) %>% 
+    step_ns(spend_per_resident_data, deg_free = tune())
+```
+
+
+#### linear model
+
+```{r}
+parks_model_lm <- linear_reg() %>% 
+    set_engine("lm") %>% 
+    set_mode("regression")
+```
+
+#### Regularization model
+
+```{r}
+parks_model_regularization <- linear_reg(penalty = tune(), mixture = tune()) %>% 
+    set_engine("glmnet") %>% 
+    set_mode("regression")
+```
+
+
+### Workflow set
+
+```{r}
+parks_lm_wf_set <- workflow_set(preproc = list(basic = parks_rec,
+                                               pca = parks_rec_pca),
+                                models = list(lm = parks_model_lm,
+                                              regular = parks_model_regularization),
+                                cross = FALSE)
+parks_lm_wf_set
+```
+
+### Fit the models
+
+```{r}
+parks_lm_res <- workflow_map(parks_lm_wf_set,
+                             "tune_grid",
+                             seed = 101, verbose = TRUE,
+                             resamples = parks_fold,
+                             grid = crossing(num_comp = seq(1, 5, 1),
+                                             deg_free = seq(1, 5, 1),
+                                             penalty = 10^seq(-7, -1, 0.1),
+                                             mixture = seq(0, 1, 0.2)),
+                             control = control_resamples(save_pred = TRUE,
+                                                         save_workflow = TRUE))
+
+autoplot(parks_lm_res, select_best = TRUE)
+parks_lm_res %>% 
+    collect_metrics() %>% 
+    filter(.metric == "rmse") %>% 
+    arrange(mean) %>% 
+    print(n = Inf)
+```
+
+### Evaluate results
+
+```{r}
+parks_lm_res %>% 
+    rank_results(rank_metric = "rmse", select_best = TRUE)
+```
+
+* The model used pca and added splines to the recipe and applied regularization outperformed the basic linear model by reducing the best rmse from 9 to 8.85. 
+
+### How well did the models do?
+
+```{r}
+collect_predictions(parks_lm_res) %>% 
+    ggplot(aes(rank, .pred)) +
+    geom_point(alpha = 0.6, color = "midnightblue") +
+    geom_abline(lty = 2, color = "red") +
+    facet_wrap(~wflow_id) +
+    coord_obs_pred() +
+    labs(x = "City park score rank (observed)",
+         y = "City park score rank (predicted)")
+```
+
+This is very slow to run because the prediction pulls out more than 4 million rows.
