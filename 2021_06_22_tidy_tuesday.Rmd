@@ -20,6 +20,7 @@ parks <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday
            city = case_when(str_detect(city, "Washington, DC") ~ "Washington, D.C.",
                             str_detect(city, "Charlotte.+") ~ "Charlotte",
                             TRUE ~ city)) 
+
 ```
 
 ```{r}

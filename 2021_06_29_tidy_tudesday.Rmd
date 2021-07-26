@@ -1,0 +1,124 @@
+---
+title: '2021-06-29'
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+library(lubridate)
+theme_set(theme_light())
+```
+
+
+## Read data
+
+```{r}
+animal_rescues <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-06-29/animal_rescues.csv',
+                           na = c("", "NA", "NULL")) %>% 
+    mutate(date_time_of_call = dmy_hm(date_time_of_call))
+```
+
+
+## EDA
+
+```{r}
+animal_rescues %>% 
+    skimr::skim()
+```
+
+[Imitate article graphs](https://www.theguardian.com/world/2021/jan/08/animal-rescues-london-fire-brigade-rise-2020-pandemic-year)
+
+```{r}
+# find color by taking a picture of the plot and use [this website](https://html-color-codes.info/colors-from-image/)
+
+animal_rescues %>% 
+    count(cal_year, sort = TRUE) %>% 
+    filter(cal_year != 2021) %>% 
+    ggplot(aes(cal_year, n, fill = cal_year == 2020)) +
+    geom_col() +
+    scale_fill_manual(values = c("#DADADA", "#CC0A11")) +
+    scale_x_continuous(breaks = 2009:2020) +
+    scale_y_continuous(limits = c(0, 800), expand = c(0, 0)) + # get rid of the whitespace
+    labs(x = "",
+         y = "",
+         title = "London firefighters attended 755 animal rescues across the\ncapital in 2020",
+         caption = "Guardian graphic. Source: London fire brigade") +
+    theme(legend.position = "none",
+          plot.caption = element_text(hjust = 0, size = 11), # left alignment of caption
+          plot.caption.position = "plot",
+          plot.title = element_text(face = "bold", size = 16,
+                                    family = "serif",
+                                    margin = margin(0, 1, 1, 0, "cm")),
+          plot.title.position = "plot",
+          panel.grid.major.x = element_blank(),
+          panel.grid.minor.x = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.border = element_blank(), # get rid of the box
+          axis.line.x = element_line(size = 0.5, color = "#808080"),
+          axis.ticks = element_blank(),
+          axis.text.y = element_text(color = "#DADADA", size = 12,
+                                     hjust = 0,
+                                     vjust = -0.5),
+          axis.text.x = element_text(color = "#DADADA", size = 12))
+```
+
+
+```{r}
+figure2_data <- animal_rescues %>% 
+    filter(cal_year %in% c(2019, 2020)) %>% 
+    mutate(animal_group_parent = fct_lump(animal_group_parent, 6)) %>% 
+    count(cal_year, animal_group_parent, sort = TRUE) %>% 
+    mutate(animal_group_parent = fct_recode(animal_group_parent, Dogs = "Dog",
+                                            Cats = "Cat", Birds = "Bird",
+                                            Foxes = "Fox", Deers = "Deer",
+                                            Horses = "Horse"),
+        animal_group_parent = fct_relevel(animal_group_parent, "Other", "Horses",
+                                             "Deers", 
+                                             "Foxes", "Dogs",
+                                             after = 0))
+figure2_data %>% 
+    ggplot(aes(n, animal_group_parent, fill = factor(cal_year))) +
+    geom_col(position = "dodge", width = 0.45) +
+    # geom_text(data = figure2_data %>% 
+                  # mutate(n = if_else(cal_year == 2020, n, as.integer(NA_real_))), # make n in 2019 to be NAs so they won't show on the chart
+              # aes(label = n)) +
+    scale_fill_manual(values = c("#CC0A11", "#DADADA"),
+                      breaks = c(2020, 2019)) +
+    scale_x_continuous(breaks = seq(0, 300, 50), expand = c(0, 0),
+                       position = "top") +
+    scale_y_discrete(expand = c(0, 0),
+                     labels = c("Cats" = expression(paste("Cats", bold(" 337"))),
+                                "Birds" = expression(paste("Birds", bold(" 214"))),
+                                "Dogs" = expression(paste("Dogs", bold(" 73"))),
+                                "Foxes" = expression(paste("Foxes", bold(" 61"))),
+                                "Deers" = expression(paste("Deer", bold(" 17"))),
+                                "Horses" = expression(paste("Horses", bold(" 17"))),
+                                "Other" = expression(paste("Other", bold(" 36"))))) +
+    labs(x = "",
+         y = "",
+         fill = NULL,
+         title = "Cats accounted for 45% of London fire brigade animal rescures, but the\nbiggest proportional increases were among birds and foxes",
+         caption = "Guardian graphic | Source: London fire brigade") +
+    theme(legend.position = "top",
+          legend.justification = "left",
+          legend.key.width = unit(0.3, "cm"),
+          legend.text = element_text(size = 12),
+          plot.caption = element_text(hjust = 0, size = 11,
+                                      margin = margin(1, 0, 0, 0, "cm")), # left alignment of caption
+          plot.caption.position = "plot",
+          plot.title = element_text(face = "bold", size = 16,
+                                    family = "serif",
+                                    margin = margin(0, 0, 0, 0, "cm")),
+          plot.title.position = "plot",
+          panel.grid.minor.x = element_blank(),
+          panel.grid.major.y = element_blank(),
+          panel.grid.minor.y = element_blank(),
+          panel.border = element_blank(), # get rid of the box
+          axis.ticks.y = element_blank(),
+          axis.text.x = element_text(color = "#DADADA", size = 12),
+          axis.text.y = element_text(hjust = 0, size = 11,
+                                     face = "bold"))
+```
+
