@@ -1,0 +1,106 @@
+---
+title: "2021_07_06_tidy_tuesday"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+theme_set(theme_light())
+```
+
+## Load data
+
+```{r}
+holidays <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-07-06/holidays.csv')
+
+```
+
+## Which country colonized others the most?
+
+```{r}
+holidays %>% 
+    filter(!is.na(independence_from)) %>% 
+    mutate(independence_from = case_when(
+        str_detect(independence_from, ".*United Kingdom.*") ~ "United Kingdom",
+        str_detect(independence_from, "Kingdom of Great Britain") ~ "United Kingdom",
+        str_detect(independence_from, ".*France.*") ~ "France",
+        str_detect(independence_from, ".*Spanish.* | Spain") ~ "Spain",
+        str_detect(independence_from, ".*Soviet.*") ~ "Soviet Union",
+        str_detect(independence_from, ".*Japan.*") ~ "Japan",
+        TRUE ~ independence_from)) %>% 
+    count(independence_from, sort = TRUE) %>% 
+    print(n = Inf)
+```
+
+* United Kingdom
+
+## How many countries declared independence from Qing China?
+
+```{r}
+holidays %>% 
+    filter(str_detect(independence_from, "Qing.*"))
+```
+
+* Mongolia
+
+## How many countries declared independence from US?
+
+```{r}
+holidays %>% 
+    filter(str_detect(independence_from, "United States")) 
+```
+
+* Austria (US is one of the allies) and Micronesia
+
+
+## Top 10 countries with the earliest independence day
+
+```{r}
+
+holidays %>% 
+    slice_min(date_parsed, n = 10) %>% 
+    relocate(country, date_parsed, independence_from) %>% 
+    ggplot(aes(date_parsed, country)) +
+    geom_point() +
+    geom_text(aes(label = date_parsed), size = 2.5,
+              vjust = 1.5) +
+    facet_wrap(~independence_from) +
+    labs(x = "Date of Independence",
+         y = "",
+         title = "Top 10 countries with the earliest independence day",
+         subtitle = "Faceted by where they get independence from")
+```
+
+* Switzerland was the first country to get independence in August 1, 1291. Among the countries who got independence early, most of them got independence from Spanish Empire.
+
+## Top 10 countries with the latest independence day
+
+```{r}
+
+holidays %>% 
+    slice_max(date_parsed, n = 10) %>% 
+    relocate(country, date_parsed, independence_from) %>% 
+    ggplot(aes(date_parsed, country)) +
+    geom_point() +
+    geom_text(aes(label = date_parsed), size = 2.5,
+              vjust = 1.5) +
+    facet_wrap(~independence_from) +
+    labs(x = "Date of Independence",
+         y = "",
+         title = "Top 10 countries with the latest independence day",
+         subtitle = "Faceted by where they get independence from")
+```
+
+* South Sudan was the last country to get independence in July 9, 2011. Among the countries who got independence late, most of them got independence from Soviet Union.
+
+
+## The most common holiday name for independence 
+
+```{r}
+holidays %>% 
+    count(name_of_holiday, sort = TRUE)
+```
+
+* Independence day.
