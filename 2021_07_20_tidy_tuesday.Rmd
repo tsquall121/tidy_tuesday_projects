@@ -1,0 +1,146 @@
+---
+title: "2021_07_20_tidy_tuesday"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(scales)
+library(lubridate)
+theme_set(theme_light())
+```
+
+
+## Load data
+
+```{r}
+drought <- read_csv('https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2021/2021-07-20/drought.csv') %>% 
+    mutate(map_date = parse_date(as.character(map_date), format = "%Y%m%d"),
+           drought_lvl = fct_recode(drought_lvl,
+                                    "No drought" = "None",
+                                    "Abnormally dry" = "D0",
+                                    "Moderate drought" = "D1",
+                                    "Severe drought" = "D2",
+                                    "Extreme drought" = "D3",
+                                    "Exceptional drought" = "D4"
+                                    ),
+           drought_lvl = fct_relevel(drought_lvl, c("No drought",
+                                                    "Abnormally dry",
+                                                    "Moderate drought",
+                                                    "Severe drought",
+                                                    "Extreme drought",
+                                                    "Exceptional drought")))
+```
+
+## EDA
+
+```{r}
+drought %>% 
+    skimr::skim()
+```
+
+### Minimum and Maximum recorded date for each state
+
+```{r}
+drought %>% 
+    group_by(state_abb) %>% 
+    summarize(min_date = min(map_date),
+              max_date = max(map_date),
+              mean_date = mean(map_date),
+              median_date = median(map_date)) %>% 
+    print(n = Inf)
+```
+
+* Each state has the same amount of recorded date
+
+### When was the most prevalent drought (Abnormally dry) in each state?
+
+```{r}
+library(geofacet)
+drought %>% 
+    filter(drought_lvl == "Abnormally dry") %>% 
+    group_by(state_abb) %>% 
+    slice_max(area_pct, n = 1) %>% 
+    ggplot(aes(map_date, area_pct/100)) +
+    geom_point() +
+    scale_y_continuous(labels = percent) +
+    facet_geo(~state_abb) +
+    labs(x = "Drought date",
+         y = "% of state in drought",
+         title = "% of state in drought (abnormally dry) over time") +
+    theme(axis.text.x = element_text(angle = 30))
+```
+
+* D.C., New Jersey, and Rhode Island have the most prevalent drought (abnormally dry) affecting almost 100% of the state (or special district) on multiple occasions.
+
+### The drought (abnormally dry) hits the most population in each state
+
+```{r}
+drought %>% 
+    filter(drought_lvl == "Abnormally dry") %>% 
+    group_by(state_abb) %>% 
+    slice_max(pop_pct, n = 1) %>% 
+    ggplot(aes(map_date, pop_pct/100)) +
+    geom_point() +
+    scale_y_continuous(labels = percent) +
+    facet_geo(~state_abb) +
+    labs(x = "Drought date",
+         y = "% of population in drought",
+         title = "% of population in drought (abnormally dry) over time in each state") +
+    theme(axis.text.x = element_text(angle = 30))
+```
+
+* Similar trend was identified.
+
+
+### All drought conditions over time
+
+```{r}
+drought %>% 
+    ggplot(aes(map_date, area_pct/100, fill = drought_lvl)) +
+    geom_area() +
+    facet_geo(~state_abb, label = "name") +
+    scale_fill_viridis_d(option = "A") +
+    scale_y_continuous(labels = percent) +
+    labs(title = "Droughts in the U.S. (2001 - 2021)",
+         subtitle = "% of area in drought",
+         fill = "",
+         x = "",
+         y = "") +
+    theme(legend.position = "bottom",
+          plot.title = element_text(hjust = 0.5, face = "bold", size = 24),
+          plot.subtitle = element_text(hjust = 0.5, face = "bold", size = 16),
+          axis.text.x = element_text(angle = 30))
+```
+
+
+### Using plotly to visualize only extreme drought
+
+```{r}
+library(plotly)
+drought %>%
+    filter(drought_lvl == "Extreme drought") %>% 
+    group_by(state_abb, year(map_date), month(map_date, label = TRUE)) %>% 
+    summarize(`Average area impacted` = mean(area_pct)) %>% 
+    ungroup() %>% 
+    mutate(year = `year(map_date)`, month = `month(map_date, label = TRUE)`) %>% 
+    unite("time", year:month,
+                        sep = ", ") %>% 
+    plot_ly(type = "choropleth",
+            locationmode = "USA-states",
+            locations = ~state_abb,
+            z = ~`Average area impacted`,
+            frame = ~time,
+            color = ~`Average area impacted`,
+            zauto = FALSE,
+            zmin = 0,
+            zmax = 100) %>% 
+    layout(
+    title = "Extreme droughts in the US",
+    geo = list(
+    scope = 'usa'),
+    showlegend = FALSE) %>% 
+    colorbar(title = "Avg. % of area impacted")
+```
+

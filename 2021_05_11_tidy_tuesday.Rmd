@@ -403,7 +403,7 @@ broadband_zip_geocoded %>%
 broadband_zip_geocoded %>%
     filter(!st %in% c("AK", "HI")) %>% 
     group_by(st, county_name) %>% 
-    slice_min(broadband_usage, n = 1, with_ties = FALSE) %>% View()
+    slice_min(broadband_usage, n = 1, with_ties = FALSE) %>% 
     ungroup() %>% 
     ggplot(aes(lng, lat, color = broadband_usage)) +
     geom_point() +
