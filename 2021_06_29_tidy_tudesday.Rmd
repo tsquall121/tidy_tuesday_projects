@@ -62,6 +62,8 @@ animal_rescues %>%
                                      hjust = 0,
                                      vjust = -0.5),
           axis.text.x = element_text(color = "#DADADA", size = 12))
+ggsave(filename = "animal_rescue.png",
+       device = "png")
 ```
 
 
@@ -120,5 +122,7 @@ figure2_data %>%
           axis.text.x = element_text(color = "#DADADA", size = 12),
           axis.text.y = element_text(hjust = 0, size = 11,
                                      face = "bold"))
+ggsave(filename = "animal_resuce_breakdown.png",
+       device = "png")
 ```
 
