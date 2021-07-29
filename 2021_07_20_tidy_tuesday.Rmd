@@ -276,7 +276,7 @@ drought_sf <- states_sf %>%
 ```
 
 ```{r}
-map <- drought_sf %>%
+map_state <- drought_sf %>%
   filter(valid_start >= "2019-01-01") %>% 
   filter(!STUSPS %in% c("AK", "HI", "PR")) %>% 
   ggplot() +
@@ -309,7 +309,7 @@ map <- drought_sf %>%
         plot.margin = margin(50, 10, 30, 10)) +
   transition_manual(frames = valid_start) 
 
-animate(map, fps = 1, width = 2500, height = 1565, 
+animate(map_state, fps = 1, width = 2500, height = 1565, 
         renderer = gifski_renderer(loop = TRUE))
 
 anim_save("2021_07_20_tidy_tuesday_us_drought.gif")
