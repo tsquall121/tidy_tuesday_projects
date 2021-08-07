@@ -1,9 +1,9 @@
 # [#TidyTuesday](https://github.com/rfordatascience/tidytuesday)
 My code for weekly TidyTuesday contest.
 
-## Best Performing Countries in Paralympics 1996-2016 (2021-08-03)
+## Best Performing Countries in Paralympics (2021-08-03)
 ![Paralympics](https://github.com/tsquall121/tidy_tuesday_projects/blob/master/2021_08_03_paralympics.gif)
-## Best Performing Countries in Olympics 1988-2016 (2021-07-27)
+## Best Performing Countries in Olympics (2021-07-27)
 ![Olympics](https://github.com/tsquall121/tidy_tuesday_projects/blob/master/2021_07_27_tidy_tuesday_olympics.gif)
 ## U.S. Drought Level (2021-07-20)
 ![US Drought by State](https://github.com/tsquall121/tidy_tuesday_projects/blob/master/2021_07_20_tidy_tuesday_us_drought.gif)
