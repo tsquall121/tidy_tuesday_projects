@@ -228,13 +228,14 @@ medals_df <- animation_df %>%
   mutate(rank = seq_along(total_medal))
 
 medals_df %>% 
-  print(Inf)
+  print(n = Inf)
 # The problem is that some countries won the same number of medals such as 
 # Australia, Italy, and Japn all won 14 medals in 1988
 ```
 
 ```{r}
-medals_df_lagged <-  medals_df%>% 
+# Use rank from last Olympic to solve the tied medals issue
+medals_df_lagged <-  medals_df %>% 
   arrange(region, year) %>% 
   group_by(region) %>% 
   mutate(prev_rank = lag(rank)) %>% 
@@ -268,10 +269,14 @@ medal_line <- final_df %>%
        color = NULL,
        title = "Olympic medals by country and year") +
   transition_reveal(year) +
-  ggthemes::theme_clean() +
+  ggthemes::theme_hc() +
   theme(legend.position = "none")
 
 animate(medal_line, fps = 6,
         renderer = gifski_renderer(loop = TRUE)) 
+```
+
+```{r}
+anim_save("2021_07_27_tidy_tuesday_olympics.gif")
 ```
 
