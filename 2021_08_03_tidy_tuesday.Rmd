@@ -155,3 +155,8 @@ animate(medal_line, fps = 4,
         renderer = gifski_renderer(loop = TRUE)) 
 ```
 
+
+```{r}
+anim_save("2021_08_03_paralympics.gif")
+```
+
