@@ -1,0 +1,83 @@
+---
+title: "Roy Kent F**k Count"
+date: "2023-09-26"
+format:
+    html:
+        embeddedresources: true
+        toc: true
+---
+
+[Reproduce Deepsha's plot](https://deepshamenghani.github.io/posit_plotly_crosstalk/#/but-first..-what-is-ted-lasso-and-who-is-roy-kent)
+# Load Libraries
+```{r}
+library(tidyverse)
+library(plotly)
+```
+
+## Load Data
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/rfordatascience/tidytuesday/master/data/2023/2023-09-26/richmondway.csv") %>%
+    janitor::clean_names() %>%
+    mutate(
+        dating_coaching_flag =
+            case_when(
+                dating_flag == "Yes" & coaching_flag == "Yes" ~ "Dating & Coaching",
+                dating_flag == "Yes" & coaching_flag == "No" ~ "Dating only",
+                dating_flag == "No" & coaching_flag == "Yes" ~ "Coaching only",
+                dating_flag == "No" & coaching_flag == "No" ~ "Neither",
+                TRUE ~ "Other"
+            )
+    )
+```
+
+```{r}
+df %>%
+    plot_ly(y = ~count, x = ~season) %>%
+    add_bars(type = "bar")
+```
+
+```{r}
+df %>%
+    plot_ly(y = ~count, x = ~season) %>%
+    add_bars(frame = ~episode, type = "bar") %>%
+    animation_opts(frame = 800, transition = 300)
+```
+
+```{r}
+shared_data <- crosstalk::SharedData$new(df)
+
+plot <- shared_data %>%
+    plot_ly(y = ~f_score, x = ~episode) %>%
+    add_bars(type = "bar")
+
+checkbox_season <- crosstalk::filter_checkbox(
+    id = "season",
+    label = "Season",
+    sharedData = shared_data,
+    group = ~season
+)
+
+crosstalk::bscols(checkbox_season, plot)
+```
+
+```{r}
+shared_data <- crosstalk::SharedData$new(df, key = ~dating_coaching_flag)
+
+plot1 <- shared_data %>%
+    plot_ly() %>%
+    group_by(dating_coaching_flag) %>%
+    summarise(avg.fscore = mean(f_score, na.rm = TRUE)) %>%
+    add_bars(y = ~dating_coaching_flag, x = ~avg.fscore, type = "bar")
+
+plot2 <- shared_data %>%
+    plot_ly(x = ~episode, y = ~f_count_rk) %>%
+    add_bars(type = "bar")
+
+subplot(plot1, plot2) %>%
+    highlight(
+        persistent = TRUE,
+        on = "plotly_click",
+        off = "plotly_doubleclick",
+        dynamic = TRUE
+    )
+```
